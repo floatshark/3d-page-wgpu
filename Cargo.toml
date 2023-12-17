@@ -6,5 +6,25 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-log = "0.4.20"
+log = "0.4.17"
+gloo = "0.11.0"
+vek = "0.16.1"
 wasm-logger = "0.2.0"
+wasm-bindgen = "0.2.81"
+wasm-bindgen-futures = "0.4.31"
+wee_alloc = "0.4.5"
+wgpu = "0.18.0"
+
+[dependencies.bytemuck]
+version="1.7.3"
+features = ["derive"]
+
+[dependencies.web-sys]
+version = "0.3.58"
+features = ["HtmlCanvasElement"]
+
+[profile.release]
+panic = 'abort'
+codegen-units = 1
+opt-level = 'z'
+lto = true
