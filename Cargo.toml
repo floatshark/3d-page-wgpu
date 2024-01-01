@@ -13,6 +13,7 @@ wasm-logger = "0.2.0"
 wasm-bindgen = "0.2.81"
 wasm-bindgen-futures = "0.4.31"
 wee_alloc = "0.4.5"
+pollster = "0.3.0"
 wgpu = "0.18.0"
 
 [dependencies.bytemuck]
