@@ -4,11 +4,22 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 use wgpu::InstanceDescriptor;
 
+// Small Size Allocator for Optimization
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
+// Constant Variables
+const CANVAS_ELEMENT_ID: &str = "canvas";
+macro_rules! SHADER_FILE_NAME {
+    () => {
+        "shader.wgsl"
+    };
+}
+const VS_ENTRY_POINT: &str = "vs_main";
+const FS_ENTRY_POINT: &str = "fs_main";
+
 async fn run() {
-    let canvas: web_sys::Element = document().get_element_by_id("render").unwrap();
+    let canvas: web_sys::Element = document().get_element_by_id(CANVAS_ELEMENT_ID).unwrap();
     let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into().unwrap();
 
     let width: u32 = canvas.client_width() as u32;
@@ -17,8 +28,9 @@ async fn run() {
     log::debug!("width : {}, height : {}", width, height);
 
     let instance: wgpu::Instance = wgpu::Instance::new(InstanceDescriptor::default());
+    let surface_target = wgpu::SurfaceTarget::Canvas(canvas);
     let surface: wgpu::Surface = instance
-        .create_surface_from_canvas(canvas)
+        .create_surface(surface_target)
         .expect("Failed to create surface from canvas");
 
     let adapter: wgpu::Adapter = instance
@@ -33,9 +45,10 @@ async fn run() {
     let (device, queue) = adapter
         .request_device(
             &wgpu::DeviceDescriptor {
-                features: wgpu::Features::empty(),
-                limits: wgpu::Limits::default(),
                 label: None,
+                required_features: wgpu::Features::empty(),
+                required_limits: wgpu::Limits::default(),
+                memory_hints: wgpu::MemoryHints::default()
             },
             None,
         )
@@ -44,7 +57,7 @@ async fn run() {
 
     let shader: wgpu::ShaderModule = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: None,
-        source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("shader.wgsl"))),
+        source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!(SHADER_FILE_NAME!()))),
     });
 
     let pipeline_layout: wgpu::PipelineLayout =
@@ -63,18 +76,21 @@ async fn run() {
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_main",
+                entry_point: VS_ENTRY_POINT,
                 buffers: &[],
+                compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_main",
+                entry_point: FS_ENTRY_POINT,
                 targets: &[Some(swapchain_format.into())],
+                compilation_options: Default::default(),
             }),
             primitive: wgpu::PrimitiveState::default(),
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
             multiview: None,
+            cache: None
         });
 
     let config = wgpu::SurfaceConfiguration {
@@ -85,6 +101,7 @@ async fn run() {
         present_mode: wgpu::PresentMode::Fifo,
         alpha_mode: swapchain_capabilities.alpha_modes[0],
         view_formats: vec![],
+        desired_maximum_frame_latency: 2,
     };
 
     surface.configure(&device, &config);

@@ -1,29 +1,26 @@
 [package]
-name = "pique"
+name = "wgpu-page"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-log = "0.4.17"
+log = "0.4.22"
 gloo = "0.11.0"
-vek = "0.16.1"
-wasm-logger = "0.2.0"
-wasm-bindgen = "0.2.81"
-wasm-bindgen-futures = "0.4.31"
 wee_alloc = "0.4.5"
+wasm-logger = "0.2.0"
+wasm-bindgen = "0.2.92"
+wasm-bindgen-futures = "0.4.42"
+wgpu = "22.0.0"
+vek = "0.17.0"
 pollster = "0.3.0"
-wgpu = "0.18.0"
-
-[dependencies.bytemuck]
-version="1.7.3"
-features = ["derive"]
 
 [dependencies.web-sys]
-version = "0.3.58"
+version = "0.3.69"
 features = ["HtmlCanvasElement"]
 
+# Optimize Build .wasm Size
 [profile.release]
 panic = 'abort'
 codegen-units = 1
