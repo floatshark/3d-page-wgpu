@@ -1,8 +1,6 @@
-use gloo::utils::document;
-use std::borrow::Cow;
 use wasm_bindgen::JsCast;
-use wasm_bindgen_futures::spawn_local;
-use wgpu::InstanceDescriptor;
+use wasm_bindgen::prelude::wasm_bindgen;
+use gloo::utils::document;
 
 // Small Size Allocator for Optimization
 #[global_allocator]
@@ -18,16 +16,21 @@ macro_rules! SHADER_FILE_NAME {
 const VS_ENTRY_POINT: &str = "vs_main";
 const FS_ENTRY_POINT: &str = "fs_main";
 
-async fn run() {
+struct Context<'a>{
+    surface: wgpu::Surface<'a>,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    render_pipeline: wgpu::RenderPipeline
+}
+
+async fn init<'a>()-> Context<'a>{
     let canvas: web_sys::Element = document().get_element_by_id(CANVAS_ELEMENT_ID).unwrap();
     let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into().unwrap();
 
     let width: u32 = canvas.client_width() as u32;
     let height: u32 = canvas.client_height() as u32;
 
-    log::debug!("width : {}, height : {}", width, height);
-
-    let instance: wgpu::Instance = wgpu::Instance::new(InstanceDescriptor::default());
+    let instance: wgpu::Instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
     let surface_target = wgpu::SurfaceTarget::Canvas(canvas);
     let surface: wgpu::Surface = instance
         .create_surface(surface_target)
@@ -37,7 +40,7 @@ async fn run() {
         .request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::default(),
             compatible_surface: Some(&surface),
-            force_fallback_adapter: false,
+            force_fallback_adapter: false
         })
         .await
         .unwrap();
@@ -57,7 +60,7 @@ async fn run() {
 
     let shader: wgpu::ShaderModule = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: None,
-        source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!(SHADER_FILE_NAME!()))),
+        source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(include_str!(SHADER_FILE_NAME!()))),
     });
 
     let pipeline_layout: wgpu::PipelineLayout =
@@ -106,16 +109,21 @@ async fn run() {
 
     surface.configure(&device, &config);
 
-    // ===============================================================
+    let context = Context{surface, device, queue, render_pipeline};
+    return context;
+}
 
-    let frame: wgpu::SurfaceTexture = surface
+fn update(context : &Context) {
+    let frame: wgpu::SurfaceTexture = context.surface
         .get_current_texture()
         .expect("Failed to acquire next swap chain texture");
+    
     let view: wgpu::TextureView = frame
         .texture
         .create_view(&wgpu::TextureViewDescriptor::default());
+
     let mut encoder =
-        device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
     {
         let mut rpass: wgpu::RenderPass<'_> =
@@ -133,19 +141,22 @@ async fn run() {
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
-        rpass.set_pipeline(&render_pipeline);
+        rpass.set_pipeline(&context.render_pipeline);
         rpass.draw(0..3, 0..1);
     }
 
-    queue.submit(Some(encoder.finish()));
+    context.queue.submit(Some(encoder.finish()));
     frame.present();
-
-    log::debug!("Run End OK");
 }
 
-pub fn main() {
+#[wasm_bindgen(main)]
+pub async fn main() {
     wasm_logger::init(wasm_logger::Config::default());
-    log::debug!("Begin OK");
 
-    spawn_local(run());
+    let context: Context = init().await;
+    update(&context);
+
+    game_loop::game_loop(context, 60, 0.1, |g|{update(&g.game)}, |_g|{});
+
+    log::debug!("main end");
 }
