@@ -22,9 +22,20 @@ game-loop = "1.2.0"
 
 [dependencies.web-sys]
 version = "0.3.69"
-features = ["HtmlCanvasElement"]
+features = [
+	'CanvasRenderingContext2d',
+	'CssStyleDeclaration',
+	'Document',
+	'Element',
+	'EventTarget',
+	'HtmlCanvasElement',
+	'HtmlElement',
+	'MouseEvent',
+	'Node',
+	'Window',
+	]
 
-# Optimize Build .wasm Size
+# Optimize wasm Size
 [profile.release]
 panic = 'abort'
 codegen-units = 1

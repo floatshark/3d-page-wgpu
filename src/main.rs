@@ -1,6 +1,7 @@
 use bytemuck::{Pod, Zeroable};
-use glam;
+use glam::{self, Vec4Swizzles};
 use gloo::utils::document;
+use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsCast;
 use wgpu::util::DeviceExt;
@@ -20,7 +21,7 @@ macro_rules! SHADER_FILE_NAME {
     };
 }
 
-struct Context<'a> {
+struct RenderContext<'a> {
     surface: wgpu::Surface<'a>,
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -28,7 +29,15 @@ struct Context<'a> {
     index_buf: wgpu::Buffer,
     index_count: u32,
     bind_group: wgpu::BindGroup,
+    uniform_buf: wgpu::Buffer,
     render_pipeline: wgpu::RenderPipeline,
+}
+
+#[derive(Clone, Copy)]
+struct ViewRecord {
+    movement_x: i32,
+    movement_y: i32,
+    on_click: bool,
 }
 
 #[repr(C)]
@@ -100,7 +109,7 @@ fn create_mvp(aspect_ratio: f32) -> glam::Mat4 {
     projection * view
 }
 
-async fn init<'a>() -> Context<'a> {
+async fn init<'a>() -> RenderContext<'a> {
     let canvas: web_sys::Element = document().get_element_by_id(CANVAS_ELEMENT_ID).unwrap();
     let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into().unwrap();
 
@@ -189,28 +198,24 @@ async fn init<'a>() -> Context<'a> {
 
     let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: None,
-        entries: &[
-            wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: wgpu::BufferSize::new(64),
-                },
-                count: None,
-            }
-        ],
+        entries: &[wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::VERTEX,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: wgpu::BufferSize::new(64),
+            },
+            count: None,
+        }],
     });
 
     let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         layout: &bind_group_layout,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: uniform_buf.as_entire_binding(),
-            }
-        ],
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: uniform_buf.as_entire_binding(),
+        }],
         label: None,
     });
 
@@ -259,10 +264,9 @@ async fn init<'a>() -> Context<'a> {
             cache: None,
         });
 
-
     let index_count: u32 = index_data.len() as u32;
 
-    let context = Context {
+    let context = RenderContext {
         surface,
         device,
         queue,
@@ -270,12 +274,69 @@ async fn init<'a>() -> Context<'a> {
         index_buf,
         index_count,
         bind_group,
+        uniform_buf,
         render_pipeline,
     };
     return context;
 }
 
-fn render(context: &Context) {
+fn add_event_listener(view_record: &'static mut ViewRecord) {
+    let canvas: web_sys::Element = document().get_element_by_id(CANVAS_ELEMENT_ID).unwrap();
+    let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into().unwrap();
+
+    let mouse_move_closure = Closure::<dyn FnMut(_)>::new(|event: web_sys::MouseEvent| {
+        view_record.movement_x = event.movement_x();
+        view_record.movement_y = event.movement_y();
+        view_record.on_click = event.buttons() == 1;
+    });
+    canvas
+        .add_event_listener_with_callback("mousemove", mouse_move_closure.as_ref().unchecked_ref())
+        .unwrap();
+    mouse_move_closure.forget();
+}
+
+fn update(render_context: &RenderContext, view_record: &ViewRecord) {
+    static mut eye: glam::Vec3 = glam::Vec3::new(1.5f32, -5.0, 3.0);
+
+    let enable_mouse_control = view_record.on_click;
+    if enable_mouse_control {
+        let canvas: web_sys::Element = document().get_element_by_id(CANVAS_ELEMENT_ID).unwrap();
+        let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into().unwrap();
+
+        let width: u32 = canvas.client_width() as u32;
+        let height: u32 = canvas.client_height() as u32;
+        let aspect_ratio = width as f32 / height as f32;
+
+        unsafe{
+            let rotate_x_quat = glam::Quat::from_rotation_z(-1.0 * view_record.movement_x as f32 * 0.01);
+            eye = rotate_x_quat.mul_vec3(eye);
+        }
+
+        unsafe{
+            let y_axis = glam::vec3(eye.x, eye.y, eye.z).cross(glam::vec3(0.0, 0.0, 1.0)).normalize();
+            let rotate_y_quat = glam::Quat::from_axis_angle(y_axis, view_record.movement_y as f32 * 0.01);
+            eye = rotate_y_quat.mul_vec3(eye);
+        }
+
+        let mut eye_pos = glam::Vec3::new(1.5f32, -5.0, 3.0);
+        unsafe{eye_pos = glam::vec3(eye.x, eye.y, eye.z);}
+
+        let view = glam::Mat4::look_at_rh(eye_pos, glam::Vec3::ZERO, glam::Vec3::Z);
+
+        let projection =
+            glam::Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, aspect_ratio, 1.0, 10.0);
+
+        let mx_total = projection * view;
+        let mx_ref: &[f32; 16] = mx_total.as_ref();
+        render_context.queue.write_buffer(
+            &render_context.uniform_buf,
+            0,
+            bytemuck::cast_slice(mx_ref),
+        );
+    }
+}
+
+fn render(context: &RenderContext) {
     let frame: wgpu::SurfaceTexture = context
         .surface
         .get_current_texture()
@@ -290,25 +351,26 @@ fn render(context: &Context) {
         .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
     {
-        let mut rpass: wgpu::RenderPass<'_> = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: None,
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &view,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color {
-                        r: 0.1,
-                        g: 0.2,
-                        b: 0.3,
-                        a: 1.0,
-                    }),
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: None,
-            timestamp_writes: None,
-            occlusion_query_set: None,
-        });
+        let mut rpass: wgpu::RenderPass<'_> =
+            encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: None,
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.1,
+                            g: 0.2,
+                            b: 0.3,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
         rpass.push_debug_group("Prepare data for draw.");
         rpass.set_pipeline(&context.render_pipeline);
         rpass.set_bind_group(0, &context.bind_group, &[]);
@@ -318,7 +380,7 @@ fn render(context: &Context) {
         rpass.insert_debug_marker("Draw!");
         rpass.draw_indexed(0..context.index_count as u32, 0, 0..1);
     }
-    
+
     context.queue.submit(Some(encoder.finish()));
     frame.present();
 }
@@ -327,15 +389,26 @@ fn render(context: &Context) {
 pub async fn main() {
     wasm_logger::init(wasm_logger::Config::default());
 
-    let context: Context = init().await;
+    let render_context: RenderContext = init().await;
+
+    static mut view_record: ViewRecord = ViewRecord {
+        movement_x: 0,
+        movement_y: 0,
+        on_click: false,
+    };
+    unsafe {
+        add_event_listener(&mut view_record);
+    }
 
     game_loop::game_loop(
-        context,
+        unsafe { (render_context, &view_record) },
         UPDATE_FPS,
         0.1,
-        |_g| {},
         |g| {
-            render(&g.game);
+            update(&g.game.0, &g.game.1);
+        },
+        |g| {
+            render(&g.game.0);
         },
     );
 
