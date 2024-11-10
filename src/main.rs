@@ -387,6 +387,7 @@ fn render(context: &RenderContext) {
 
 #[wasm_bindgen(main)]
 pub async fn main() {
+    console_error_panic_hook::set_once();
     wasm_logger::init(wasm_logger::Config::default());
 
     let render_context: RenderContext = init().await;
@@ -411,6 +412,4 @@ pub async fn main() {
             render(&g.game.0);
         },
     );
-
-    log::debug!("main end");
 }
