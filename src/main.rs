@@ -1,12 +1,6 @@
-use bytemuck::{Pod, Zeroable};
-use glam::{self, Vec4Swizzles};
-use gloo::utils::document;
-use wasm_bindgen::closure::Closure;
-use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsCast;
 use wgpu::util::DeviceExt;
 
-// Small Size Allocator for Optimization
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
@@ -34,6 +28,11 @@ struct RenderContext<'a> {
 }
 
 #[derive(Clone, Copy)]
+struct View{
+    eye: glam::Vec3
+}
+
+#[derive(Clone, Copy)]
 struct ViewRecord {
     movement_x: i32,
     movement_y: i32,
@@ -41,7 +40,7 @@ struct ViewRecord {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct Vertex {
     _pos: [f32; 4],
 }
@@ -110,7 +109,9 @@ fn create_mvp(aspect_ratio: f32) -> glam::Mat4 {
 }
 
 async fn init<'a>() -> RenderContext<'a> {
-    let canvas: web_sys::Element = document().get_element_by_id(CANVAS_ELEMENT_ID).unwrap();
+    let canvas: web_sys::Element = gloo::utils::document()
+        .get_element_by_id(CANVAS_ELEMENT_ID)
+        .unwrap();
     let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into().unwrap();
 
     let width: u32 = canvas.client_width() as u32;
@@ -119,7 +120,7 @@ async fn init<'a>() -> RenderContext<'a> {
     // -----
 
     let instance: wgpu::Instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
-    let surface_target = wgpu::SurfaceTarget::Canvas(canvas);
+    let surface_target: wgpu::SurfaceTarget<'_> = wgpu::SurfaceTarget::Canvas(canvas);
     let surface: wgpu::Surface = instance
         .create_surface(surface_target)
         .expect("Failed to create surface from canvas");
@@ -171,16 +172,16 @@ async fn init<'a>() -> RenderContext<'a> {
         ))),
     });
 
-    let vertex_size = std::mem::size_of::<Vertex>();
+    let vertex_size: usize = std::mem::size_of::<Vertex>();
     let (vertex_data, index_data) = create_vertices();
 
-    let vertex_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+    let vertex_buf: wgpu::Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Vertex Buffer"),
         contents: bytemuck::cast_slice(&vertex_data),
         usage: wgpu::BufferUsages::VERTEX,
     });
 
-    let index_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+    let index_buf: wgpu::Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Index Buffer"),
         contents: bytemuck::cast_slice(&index_data),
         usage: wgpu::BufferUsages::INDEX,
@@ -190,27 +191,28 @@ async fn init<'a>() -> RenderContext<'a> {
 
     let mvp_total = create_mvp(width as f32 / height as f32);
     let mvp_ref: &[f32; 16] = mvp_total.as_ref();
-    let uniform_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+    let uniform_buf: wgpu::Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Uniform Buffer"),
         contents: bytemuck::cast_slice(mvp_ref),
         usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
     });
 
-    let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: None,
-        entries: &[wgpu::BindGroupLayoutEntry {
-            binding: 0,
-            visibility: wgpu::ShaderStages::VERTEX,
-            ty: wgpu::BindingType::Buffer {
-                ty: wgpu::BufferBindingType::Uniform,
-                has_dynamic_offset: false,
-                min_binding_size: wgpu::BufferSize::new(64),
-            },
-            count: None,
-        }],
-    });
+    let bind_group_layout: wgpu::BindGroupLayout =
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: None,
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: wgpu::BufferSize::new(64),
+                },
+                count: None,
+            }],
+        });
 
-    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+    let bind_group: wgpu::BindGroup = device.create_bind_group(&wgpu::BindGroupDescriptor {
         layout: &bind_group_layout,
         entries: &[wgpu::BindGroupEntry {
             binding: 0,
@@ -228,7 +230,7 @@ async fn init<'a>() -> RenderContext<'a> {
             push_constant_ranges: &[],
         });
 
-    let vertex_buffers = [wgpu::VertexBufferLayout {
+    let vertex_buffers: [wgpu::VertexBufferLayout<'_>; 1] = [wgpu::VertexBufferLayout {
         array_stride: vertex_size as wgpu::BufferAddress,
         step_mode: wgpu::VertexStepMode::Vertex,
         attributes: &[wgpu::VertexAttribute {
@@ -266,7 +268,7 @@ async fn init<'a>() -> RenderContext<'a> {
 
     let index_count: u32 = index_data.len() as u32;
 
-    let context = RenderContext {
+    let context: RenderContext<'_> = RenderContext {
         surface,
         device,
         queue,
@@ -280,60 +282,71 @@ async fn init<'a>() -> RenderContext<'a> {
     return context;
 }
 
-fn add_event_listener(view_record: &'static mut ViewRecord) {
-    let canvas: web_sys::Element = document().get_element_by_id(CANVAS_ELEMENT_ID).unwrap();
+fn add_event_listener(view_record: &std::rc::Rc<std::cell::Cell<ViewRecord>>) {
+    let canvas: web_sys::Element = gloo::utils::document()
+        .get_element_by_id(CANVAS_ELEMENT_ID)
+        .unwrap();
     let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into().unwrap();
 
-    let mouse_move_closure = Closure::<dyn FnMut(_)>::new(|event: web_sys::MouseEvent| {
-        view_record.movement_x = event.movement_x();
-        view_record.movement_y = event.movement_y();
-        view_record.on_click = event.buttons() == 1;
-    });
+    let view_record_clone: std::rc::Rc<std::cell::Cell<ViewRecord>> = view_record.clone();
+
+    let mouse_move_closure: wasm_bindgen::prelude::Closure<dyn FnMut(_)> =
+        wasm_bindgen::closure::Closure::wrap(Box::new(move |event: web_sys::MouseEvent| {
+            let record: ViewRecord = ViewRecord {
+                movement_x: event.movement_x(),
+                movement_y: event.movement_y(),
+                on_click: event.buttons() == 1,
+            };
+            view_record_clone.set(record);
+        }) as Box<dyn FnMut(_)>);
+
     canvas
         .add_event_listener_with_callback("mousemove", mouse_move_closure.as_ref().unchecked_ref())
         .unwrap();
     mouse_move_closure.forget();
 }
 
-fn update(render_context: &RenderContext, view_record: &ViewRecord) {
-    static mut eye: glam::Vec3 = glam::Vec3::new(1.5f32, -5.0, 3.0);
+fn update(render_context: &RenderContext, view_record: &std::rc::Rc<std::cell::Cell<ViewRecord>>, view: &std::rc::Rc<std::cell::Cell<View>>) {
+    let mut eye: glam::Vec3 = view.get().eye;
+    
+    let canvas: web_sys::Element = gloo::utils::document()
+        .get_element_by_id(CANVAS_ELEMENT_ID)
+        .unwrap();
+    let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into().unwrap();
 
-    let enable_mouse_control = view_record.on_click;
-    if enable_mouse_control {
-        let canvas: web_sys::Element = document().get_element_by_id(CANVAS_ELEMENT_ID).unwrap();
-        let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into().unwrap();
+    let width: u32 = canvas.client_width() as u32;
+    let height: u32 = canvas.client_height() as u32;
+    let aspect_ratio: f32 = width as f32 / height as f32;
 
-        let width: u32 = canvas.client_width() as u32;
-        let height: u32 = canvas.client_height() as u32;
-        let aspect_ratio = width as f32 / height as f32;
+    let enable_mouse_control = view_record.get().on_click;
+    if enable_mouse_control
+    {
+        let rotate_x_quat =
+            glam::Quat::from_rotation_z(-1.0 * view_record.get().movement_x as f32 * 0.01);
+        eye = rotate_x_quat.mul_vec3(eye);
 
-        unsafe{
-            let rotate_x_quat = glam::Quat::from_rotation_z(-1.0 * view_record.movement_x as f32 * 0.01);
-            eye = rotate_x_quat.mul_vec3(eye);
-        }
-
-        unsafe{
-            let y_axis = glam::vec3(eye.x, eye.y, eye.z).cross(glam::vec3(0.0, 0.0, 1.0)).normalize();
-            let rotate_y_quat = glam::Quat::from_axis_angle(y_axis, view_record.movement_y as f32 * 0.01);
-            eye = rotate_y_quat.mul_vec3(eye);
-        }
-
-        let mut eye_pos = glam::Vec3::new(1.5f32, -5.0, 3.0);
-        unsafe{eye_pos = glam::vec3(eye.x, eye.y, eye.z);}
-
-        let view = glam::Mat4::look_at_rh(eye_pos, glam::Vec3::ZERO, glam::Vec3::Z);
-
-        let projection =
-            glam::Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, aspect_ratio, 1.0, 10.0);
-
-        let mx_total = projection * view;
-        let mx_ref: &[f32; 16] = mx_total.as_ref();
-        render_context.queue.write_buffer(
-            &render_context.uniform_buf,
-            0,
-            bytemuck::cast_slice(mx_ref),
-        );
+        let y_axis = glam::vec3(eye.x, eye.y, eye.z)
+            .cross(glam::vec3(0.0, 0.0, 1.0))
+            .normalize();
+        let rotate_y_quat =
+            glam::Quat::from_axis_angle(y_axis, view_record.get().movement_y as f32 * 0.01);
+        eye = rotate_y_quat.mul_vec3(eye);
     }
+
+    let view_matrix: glam::Mat4 = glam::Mat4::look_at_rh(eye, glam::Vec3::ZERO, glam::Vec3::Z);
+    let projection_matrix: glam::Mat4 =
+        glam::Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, aspect_ratio, 1.0, 10.0);
+
+    let mx_total: glam::Mat4 = projection_matrix * view_matrix;
+    let mx_ref: &[f32; 16] = mx_total.as_ref();
+    render_context.queue.write_buffer(
+        &render_context.uniform_buf,
+        0,
+        bytemuck::cast_slice(mx_ref),
+    );
+
+    let view_temp: View = View{eye : eye};
+    view.set(view_temp);
 }
 
 fn render(context: &RenderContext) {
@@ -385,30 +398,35 @@ fn render(context: &RenderContext) {
     frame.present();
 }
 
-#[wasm_bindgen(main)]
+#[wasm_bindgen::prelude::wasm_bindgen(main)]
 pub async fn main() {
     console_error_panic_hook::set_once();
     wasm_logger::init(wasm_logger::Config::default());
 
     let render_context: RenderContext = init().await;
 
-    static mut view_record: ViewRecord = ViewRecord {
-        movement_x: 0,
-        movement_y: 0,
-        on_click: false,
-    };
-    unsafe {
-        add_event_listener(&mut view_record);
-    }
+    let view_record: std::rc::Rc<std::cell::Cell<ViewRecord>> =
+        std::rc::Rc::new(std::cell::Cell::new(ViewRecord {
+            movement_x: 0,
+            movement_y: 0,
+            on_click: false,
+        }));
 
+    add_event_listener(&view_record);
+
+    let view: std::rc::Rc<std::cell::Cell<View>> =
+    std::rc::Rc::new(std::cell::Cell::new(View{eye : glam::Vec3::new(1.5f32, -5.0, 3.0)}));
+    
+    let view_clone = view.clone();
+    
     game_loop::game_loop(
-        unsafe { (render_context, &view_record) },
+        (render_context, view_record, view_clone),
         UPDATE_FPS,
         0.1,
-        |g| {
-            update(&g.game.0, &g.game.1);
+        |g: &mut game_loop::GameLoop<(RenderContext<'_>, std::rc::Rc<std::cell::Cell<ViewRecord>>, std::rc::Rc<std::cell::Cell<View>>), game_loop::Time, ()>| {
+            update(&g.game.0, &g.game.1, &g.game.2);
         },
-        |g| {
+        |g: &mut game_loop::GameLoop<(RenderContext<'_>, std::rc::Rc<std::cell::Cell<ViewRecord>>, std::rc::Rc<std::cell::Cell<View>>), game_loop::Time, ()>| {
             render(&g.game.0);
         },
     );
