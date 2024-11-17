@@ -1,10 +1,11 @@
 use wasm_bindgen::JsCast;
 use wgpu::util::DeviceExt;
 
+mod frontend;
+
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
-// Constant Variables
 const UPDATE_FPS: u32 = 60;
 const CANVAS_ELEMENT_ID: &str = "canvas";
 const VS_ENTRY_POINT: &str = "vs_main";
@@ -13,6 +14,56 @@ macro_rules! SHADER_FILE_NAME {
     () => {
         "shader.wgsl"
     };
+}
+
+#[wasm_bindgen::prelude::wasm_bindgen(main)]
+pub async fn main() {
+    console_error_panic_hook::set_once();
+    wasm_logger::init(wasm_logger::Config::default());
+
+    let render_context: RenderContext = init().await;
+
+    let mouse_event_js: std::rc::Rc<std::cell::Cell<frontend::controls::MouseEventResponseJs>> =
+        std::rc::Rc::new(std::cell::Cell::new(frontend::controls::MouseEventResponseJs {
+            movement_x: 0,
+            movement_y: 0,
+            on_click: false,
+        }));
+    frontend::controls::add_event_listener_control(&mouse_event_js);
+
+    let view: std::rc::Rc<std::cell::Cell<View>> = std::rc::Rc::new(std::cell::Cell::new(View {
+        eye: glam::Vec3::new(1.5f32, -5.0, 3.0),
+    }));
+
+    let view_clone = view.clone();
+
+    game_loop::game_loop(
+        (render_context, mouse_event_js, view_clone),
+        UPDATE_FPS,
+        0.1,
+        |g: &mut game_loop::GameLoop<
+            (
+                RenderContext<'_>,
+                std::rc::Rc<std::cell::Cell<frontend::controls::MouseEventResponseJs>>,
+                std::rc::Rc<std::cell::Cell<View>>,
+            ),
+            game_loop::Time,
+            (),
+        >| {
+            update(&g.game.0, &g.game.1, &g.game.2);
+        },
+        |g: &mut game_loop::GameLoop<
+            (
+                RenderContext<'_>,
+                std::rc::Rc<std::cell::Cell<frontend::controls::MouseEventResponseJs>>,
+                std::rc::Rc<std::cell::Cell<View>>,
+            ),
+            game_loop::Time,
+            (),
+        >| {
+            render(&g.game.0);
+        },
+    );
 }
 
 struct RenderContext<'a> {
@@ -28,15 +79,8 @@ struct RenderContext<'a> {
 }
 
 #[derive(Clone, Copy)]
-struct View{
-    eye: glam::Vec3
-}
-
-#[derive(Clone, Copy)]
-struct ViewRecord {
-    movement_x: i32,
-    movement_y: i32,
-    on_click: bool,
+struct View {
+    eye: glam::Vec3,
 }
 
 #[repr(C)]
@@ -282,33 +326,13 @@ async fn init<'a>() -> RenderContext<'a> {
     return context;
 }
 
-fn add_event_listener(view_record: &std::rc::Rc<std::cell::Cell<ViewRecord>>) {
-    let canvas: web_sys::Element = gloo::utils::document()
-        .get_element_by_id(CANVAS_ELEMENT_ID)
-        .unwrap();
-    let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into().unwrap();
-
-    let view_record_clone: std::rc::Rc<std::cell::Cell<ViewRecord>> = view_record.clone();
-
-    let mouse_move_closure: wasm_bindgen::prelude::Closure<dyn FnMut(_)> =
-        wasm_bindgen::closure::Closure::wrap(Box::new(move |event: web_sys::MouseEvent| {
-            let record: ViewRecord = ViewRecord {
-                movement_x: event.movement_x(),
-                movement_y: event.movement_y(),
-                on_click: event.buttons() == 1,
-            };
-            view_record_clone.set(record);
-        }) as Box<dyn FnMut(_)>);
-
-    canvas
-        .add_event_listener_with_callback("mousemove", mouse_move_closure.as_ref().unchecked_ref())
-        .unwrap();
-    mouse_move_closure.forget();
-}
-
-fn update(render_context: &RenderContext, view_record: &std::rc::Rc<std::cell::Cell<ViewRecord>>, view: &std::rc::Rc<std::cell::Cell<View>>) {
+fn update(
+    render_context: &RenderContext,
+    mouse_event_js: &std::rc::Rc<std::cell::Cell<frontend::controls::MouseEventResponseJs>>,
+    view: &std::rc::Rc<std::cell::Cell<View>>,
+) {
     let mut eye: glam::Vec3 = view.get().eye;
-    
+
     let canvas: web_sys::Element = gloo::utils::document()
         .get_element_by_id(CANVAS_ELEMENT_ID)
         .unwrap();
@@ -318,18 +342,17 @@ fn update(render_context: &RenderContext, view_record: &std::rc::Rc<std::cell::C
     let height: u32 = canvas.client_height() as u32;
     let aspect_ratio: f32 = width as f32 / height as f32;
 
-    let enable_mouse_control = view_record.get().on_click;
-    if enable_mouse_control
-    {
+    let enable_mouse_control = mouse_event_js.get().on_click;
+    if enable_mouse_control {
         let rotate_x_quat =
-            glam::Quat::from_rotation_z(-1.0 * view_record.get().movement_x as f32 * 0.01);
+            glam::Quat::from_rotation_z(-1.0 * mouse_event_js.get().movement_x as f32 * 0.01);
         eye = rotate_x_quat.mul_vec3(eye);
 
         let y_axis = glam::vec3(eye.x, eye.y, eye.z)
             .cross(glam::vec3(0.0, 0.0, 1.0))
             .normalize();
         let rotate_y_quat =
-            glam::Quat::from_axis_angle(y_axis, view_record.get().movement_y as f32 * 0.01);
+            glam::Quat::from_axis_angle(y_axis, mouse_event_js.get().movement_y as f32 * 0.01);
         eye = rotate_y_quat.mul_vec3(eye);
     }
 
@@ -339,13 +362,11 @@ fn update(render_context: &RenderContext, view_record: &std::rc::Rc<std::cell::C
 
     let mx_total: glam::Mat4 = projection_matrix * view_matrix;
     let mx_ref: &[f32; 16] = mx_total.as_ref();
-    render_context.queue.write_buffer(
-        &render_context.uniform_buf,
-        0,
-        bytemuck::cast_slice(mx_ref),
-    );
+    render_context
+        .queue
+        .write_buffer(&render_context.uniform_buf, 0, bytemuck::cast_slice(mx_ref));
 
-    let view_temp: View = View{eye : eye};
+    let view_temp: View = View { eye: eye };
     view.set(view_temp);
 }
 
@@ -396,38 +417,4 @@ fn render(context: &RenderContext) {
 
     context.queue.submit(Some(encoder.finish()));
     frame.present();
-}
-
-#[wasm_bindgen::prelude::wasm_bindgen(main)]
-pub async fn main() {
-    console_error_panic_hook::set_once();
-    wasm_logger::init(wasm_logger::Config::default());
-
-    let render_context: RenderContext = init().await;
-
-    let view_record: std::rc::Rc<std::cell::Cell<ViewRecord>> =
-        std::rc::Rc::new(std::cell::Cell::new(ViewRecord {
-            movement_x: 0,
-            movement_y: 0,
-            on_click: false,
-        }));
-
-    add_event_listener(&view_record);
-
-    let view: std::rc::Rc<std::cell::Cell<View>> =
-    std::rc::Rc::new(std::cell::Cell::new(View{eye : glam::Vec3::new(1.5f32, -5.0, 3.0)}));
-    
-    let view_clone = view.clone();
-    
-    game_loop::game_loop(
-        (render_context, view_record, view_clone),
-        UPDATE_FPS,
-        0.1,
-        |g: &mut game_loop::GameLoop<(RenderContext<'_>, std::rc::Rc<std::cell::Cell<ViewRecord>>, std::rc::Rc<std::cell::Cell<View>>), game_loop::Time, ()>| {
-            update(&g.game.0, &g.game.1, &g.game.2);
-        },
-        |g: &mut game_loop::GameLoop<(RenderContext<'_>, std::rc::Rc<std::cell::Cell<ViewRecord>>, std::rc::Rc<std::cell::Cell<View>>), game_loop::Time, ()>| {
-            render(&g.game.0);
-        },
-    );
 }
