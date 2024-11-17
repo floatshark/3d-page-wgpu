@@ -1,34 +1,29 @@
-use wasm_bindgen::JsCast;
-use wgpu::util::DeviceExt;
-
 mod frontend;
+mod rendering;
+
+use wasm_bindgen::JsCast;
 
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 const UPDATE_FPS: u32 = 60;
 const CANVAS_ELEMENT_ID: &str = "canvas";
-const VS_ENTRY_POINT: &str = "vs_main";
-const FS_ENTRY_POINT: &str = "fs_main";
-macro_rules! SHADER_FILE_NAME {
-    () => {
-        "shader.wgsl"
-    };
-}
 
 #[wasm_bindgen::prelude::wasm_bindgen(main)]
 pub async fn main() {
     console_error_panic_hook::set_once();
     wasm_logger::init(wasm_logger::Config::default());
 
-    let render_context: RenderContext = init().await;
+    let webgpu_context: rendering::webgpu::WebGPUContext = rendering::webgpu::init().await;
 
     let mouse_event_js: std::rc::Rc<std::cell::Cell<frontend::controls::MouseEventResponseJs>> =
-        std::rc::Rc::new(std::cell::Cell::new(frontend::controls::MouseEventResponseJs {
-            movement_x: 0,
-            movement_y: 0,
-            on_click: false,
-        }));
+        std::rc::Rc::new(std::cell::Cell::new(
+            frontend::controls::MouseEventResponseJs {
+                movement_x: 0,
+                movement_y: 0,
+                on_click: false,
+            },
+        ));
     frontend::controls::add_event_listener_control(&mouse_event_js);
 
     let view: std::rc::Rc<std::cell::Cell<View>> = std::rc::Rc::new(std::cell::Cell::new(View {
@@ -38,12 +33,12 @@ pub async fn main() {
     let view_clone = view.clone();
 
     game_loop::game_loop(
-        (render_context, mouse_event_js, view_clone),
+        (webgpu_context, mouse_event_js, view_clone),
         UPDATE_FPS,
         0.1,
         |g: &mut game_loop::GameLoop<
             (
-                RenderContext<'_>,
+                rendering::webgpu::WebGPUContext<'_>,
                 std::rc::Rc<std::cell::Cell<frontend::controls::MouseEventResponseJs>>,
                 std::rc::Rc<std::cell::Cell<View>>,
             ),
@@ -54,7 +49,7 @@ pub async fn main() {
         },
         |g: &mut game_loop::GameLoop<
             (
-                RenderContext<'_>,
+                rendering::webgpu::WebGPUContext<'_>,
                 std::rc::Rc<std::cell::Cell<frontend::controls::MouseEventResponseJs>>,
                 std::rc::Rc<std::cell::Cell<View>>,
             ),
@@ -66,268 +61,13 @@ pub async fn main() {
     );
 }
 
-struct RenderContext<'a> {
-    surface: wgpu::Surface<'a>,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    vertex_buf: wgpu::Buffer,
-    index_buf: wgpu::Buffer,
-    index_count: u32,
-    bind_group: wgpu::BindGroup,
-    uniform_buf: wgpu::Buffer,
-    render_pipeline: wgpu::RenderPipeline,
-}
-
 #[derive(Clone, Copy)]
 struct View {
     eye: glam::Vec3,
 }
 
-#[repr(C)]
-#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-struct Vertex {
-    _pos: [f32; 4],
-}
-
-fn vertex(pos: [i8; 3]) -> Vertex {
-    Vertex {
-        _pos: [pos[0] as f32, pos[1] as f32, pos[2] as f32, 1.0],
-    }
-}
-
-fn create_vertices() -> (Vec<Vertex>, Vec<u16>) {
-    let vertex_data = [
-        // top (0, 0, 1)
-        vertex([-1, -1, 1]),
-        vertex([1, -1, 1]),
-        vertex([1, 1, 1]),
-        vertex([-1, 1, 1]),
-        // bottom (0, 0, -1)
-        vertex([-1, 1, -1]),
-        vertex([1, 1, -1]),
-        vertex([1, -1, -1]),
-        vertex([-1, -1, -1]),
-        // right (1, 0, 0)
-        vertex([1, -1, -1]),
-        vertex([1, 1, -1]),
-        vertex([1, 1, 1]),
-        vertex([1, -1, 1]),
-        // left (-1, 0, 0)
-        vertex([-1, -1, 1]),
-        vertex([-1, 1, 1]),
-        vertex([-1, 1, -1]),
-        vertex([-1, -1, -1]),
-        // front (0, 1, 0)
-        vertex([1, 1, -1]),
-        vertex([-1, 1, -1]),
-        vertex([-1, 1, 1]),
-        vertex([1, 1, 1]),
-        // back (0, -1, 0)
-        vertex([1, -1, 1]),
-        vertex([-1, -1, 1]),
-        vertex([-1, -1, -1]),
-        vertex([1, -1, -1]),
-    ];
-
-    let index_data: &[u16] = &[
-        0, 1, 2, 2, 3, 0, // top
-        4, 5, 6, 6, 7, 4, // bottom
-        8, 9, 10, 10, 11, 8, // right
-        12, 13, 14, 14, 15, 12, // left
-        16, 17, 18, 18, 19, 16, // front
-        20, 21, 22, 22, 23, 20, // back
-    ];
-
-    (vertex_data.to_vec(), index_data.to_vec())
-}
-
-fn create_mvp(aspect_ratio: f32) -> glam::Mat4 {
-    let projection =
-        glam::Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, aspect_ratio, 1.0, 10.0);
-    let view = glam::Mat4::look_at_rh(
-        glam::Vec3::new(1.5f32, -5.0, 3.0),
-        glam::Vec3::ZERO,
-        glam::Vec3::Z,
-    );
-    projection * view
-}
-
-async fn init<'a>() -> RenderContext<'a> {
-    let canvas: web_sys::Element = gloo::utils::document()
-        .get_element_by_id(CANVAS_ELEMENT_ID)
-        .unwrap();
-    let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into().unwrap();
-
-    let width: u32 = canvas.client_width() as u32;
-    let height: u32 = canvas.client_height() as u32;
-
-    // -----
-
-    let instance: wgpu::Instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
-    let surface_target: wgpu::SurfaceTarget<'_> = wgpu::SurfaceTarget::Canvas(canvas);
-    let surface: wgpu::Surface = instance
-        .create_surface(surface_target)
-        .expect("Failed to create surface from canvas");
-
-    let adapter: wgpu::Adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::default(),
-            compatible_surface: Some(&surface),
-            force_fallback_adapter: false,
-        })
-        .await
-        .unwrap();
-
-    let (device, queue) = adapter
-        .request_device(
-            &wgpu::DeviceDescriptor {
-                label: None,
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
-                memory_hints: wgpu::MemoryHints::default(),
-            },
-            None,
-        )
-        .await
-        .unwrap();
-
-    let swapchain_capabilities: wgpu::SurfaceCapabilities = surface.get_capabilities(&adapter);
-    let swapchain_format: wgpu::TextureFormat = swapchain_capabilities.formats[0];
-
-    let config = wgpu::SurfaceConfiguration {
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-        format: swapchain_format,
-        width: width,
-        height: height,
-        present_mode: wgpu::PresentMode::Fifo,
-        alpha_mode: swapchain_capabilities.alpha_modes[0],
-        view_formats: vec![],
-        desired_maximum_frame_latency: 2,
-    };
-
-    surface.configure(&device, &config);
-
-    // vertex ~~~~~~
-
-    let shader: wgpu::ShaderModule = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: None,
-        source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(include_str!(
-            SHADER_FILE_NAME!()
-        ))),
-    });
-
-    let vertex_size: usize = std::mem::size_of::<Vertex>();
-    let (vertex_data, index_data) = create_vertices();
-
-    let vertex_buf: wgpu::Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("Vertex Buffer"),
-        contents: bytemuck::cast_slice(&vertex_data),
-        usage: wgpu::BufferUsages::VERTEX,
-    });
-
-    let index_buf: wgpu::Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("Index Buffer"),
-        contents: bytemuck::cast_slice(&index_data),
-        usage: wgpu::BufferUsages::INDEX,
-    });
-
-    // binding ~~~~~~~
-
-    let mvp_total = create_mvp(width as f32 / height as f32);
-    let mvp_ref: &[f32; 16] = mvp_total.as_ref();
-    let uniform_buf: wgpu::Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("Uniform Buffer"),
-        contents: bytemuck::cast_slice(mvp_ref),
-        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-    });
-
-    let bind_group_layout: wgpu::BindGroupLayout =
-        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: None,
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: wgpu::BufferSize::new(64),
-                },
-                count: None,
-            }],
-        });
-
-    let bind_group: wgpu::BindGroup = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        layout: &bind_group_layout,
-        entries: &[wgpu::BindGroupEntry {
-            binding: 0,
-            resource: uniform_buf.as_entire_binding(),
-        }],
-        label: None,
-    });
-
-    // pipeline -----------------
-
-    let pipeline_layout: wgpu::PipelineLayout =
-        device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: None,
-            bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
-        });
-
-    let vertex_buffers: [wgpu::VertexBufferLayout<'_>; 1] = [wgpu::VertexBufferLayout {
-        array_stride: vertex_size as wgpu::BufferAddress,
-        step_mode: wgpu::VertexStepMode::Vertex,
-        attributes: &[wgpu::VertexAttribute {
-            format: wgpu::VertexFormat::Float32x4,
-            offset: 0,
-            shader_location: 0,
-        }],
-    }];
-
-    let render_pipeline: wgpu::RenderPipeline =
-        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: None,
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: VS_ENTRY_POINT,
-                compilation_options: Default::default(),
-                buffers: &vertex_buffers,
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: FS_ENTRY_POINT,
-                compilation_options: Default::default(),
-                targets: &[Some(swapchain_format.into())],
-            }),
-            primitive: wgpu::PrimitiveState {
-                cull_mode: Some(wgpu::Face::Back),
-                ..Default::default()
-            },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
-        });
-
-    let index_count: u32 = index_data.len() as u32;
-
-    let context: RenderContext<'_> = RenderContext {
-        surface,
-        device,
-        queue,
-        vertex_buf,
-        index_buf,
-        index_count,
-        bind_group,
-        uniform_buf,
-        render_pipeline,
-    };
-    return context;
-}
-
 fn update(
-    render_context: &RenderContext,
+    render_context: &rendering::webgpu::WebGPUContext,
     mouse_event_js: &std::rc::Rc<std::cell::Cell<frontend::controls::MouseEventResponseJs>>,
     view: &std::rc::Rc<std::cell::Cell<View>>,
 ) {
@@ -370,7 +110,7 @@ fn update(
     view.set(view_temp);
 }
 
-fn render(context: &RenderContext) {
+fn render(context: &rendering::webgpu::WebGPUContext) {
     let frame: wgpu::SurfaceTexture = context
         .surface
         .get_current_texture()

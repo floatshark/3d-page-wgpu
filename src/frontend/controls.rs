@@ -9,7 +9,9 @@ pub struct MouseEventResponseJs {
     pub on_click: bool,
 }
 
-pub fn add_event_listener_control(view_record: &std::rc::Rc<std::cell::Cell<MouseEventResponseJs>>) {
+pub fn add_event_listener_control(
+    view_record: &std::rc::Rc<std::cell::Cell<MouseEventResponseJs>>,
+) {
     let canvas: web_sys::Element = gloo::utils::document()
         .get_element_by_id(CANVAS_ELEMENT_ID)
         .unwrap();
