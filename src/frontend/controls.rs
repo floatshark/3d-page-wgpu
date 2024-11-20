@@ -1,6 +1,6 @@
-use wasm_bindgen::JsCast;
+use crate::engine::define;
 
-const CANVAS_ELEMENT_ID: &str = "canvas";
+use wasm_bindgen::JsCast;
 
 #[derive(Clone, Copy)]
 pub struct MouseEventResponseJs {
@@ -13,7 +13,7 @@ pub fn add_event_listener_control(
     view_record: &std::rc::Rc<std::cell::Cell<MouseEventResponseJs>>,
 ) {
     let canvas: web_sys::Element = gloo::utils::document()
-        .get_element_by_id(CANVAS_ELEMENT_ID)
+        .get_element_by_id(define::CANVAS_ELEMENT_ID)
         .unwrap();
     let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into().unwrap();
 

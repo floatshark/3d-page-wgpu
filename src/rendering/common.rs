@@ -1,7 +1,3 @@
-pub const CANVAS_ELEMENT_ID: &str = "canvas";
-pub const VS_ENTRY_POINT: &str = "vs_main";
-pub const FS_ENTRY_POINT: &str = "fs_main";
-
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex {

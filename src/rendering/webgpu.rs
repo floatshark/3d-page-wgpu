@@ -1,6 +1,8 @@
+use crate::engine::define;
+use crate::rendering::common;
+
 use wasm_bindgen::JsCast;
 use wgpu::util::DeviceExt;
-use super::common;
 
 pub struct WebGPUContext<'a> {
     pub surface: wgpu::Surface<'a>,
@@ -16,7 +18,7 @@ pub struct WebGPUContext<'a> {
 
 pub async fn init<'a>() -> WebGPUContext<'a> {
     let canvas: web_sys::Element = gloo::utils::document()
-        .get_element_by_id(common::CANVAS_ELEMENT_ID)
+        .get_element_by_id(define::CANVAS_ELEMENT_ID)
         .unwrap();
     let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into().unwrap();
 
@@ -152,13 +154,13 @@ pub async fn init<'a>() -> WebGPUContext<'a> {
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: common::VS_ENTRY_POINT,
+                entry_point: define::VS_ENTRY_POINT,
                 compilation_options: Default::default(),
                 buffers: &vertex_buffers,
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: common::FS_ENTRY_POINT,
+                entry_point: define::FS_ENTRY_POINT,
                 compilation_options: Default::default(),
                 targets: &[Some(swapchain_format.into())],
             }),
