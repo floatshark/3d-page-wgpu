@@ -378,16 +378,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "game-loop"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f565189f0b27943213411d9d1c2df8b5d066e14d2e75f041d3b53c13b24ac80"
-dependencies = [
- "wasm-bindgen",
- "web-sys",
-]
-
-[[package]]
 name = "getrandom"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1342,6 +1332,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "web-time"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a6580f308b1fad9207618087a65c04e7a10bc77e02c8e84e9b00dd4b12fa0bb"
+dependencies = [
+ "js-sys",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "wee_alloc"
 version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1455,7 +1455,6 @@ dependencies = [
  "bytemuck",
  "console_error_panic_hook",
  "futures",
- "game-loop",
  "glam",
  "gloo",
  "log",
@@ -1463,6 +1462,7 @@ dependencies = [
  "wasm-bindgen-futures",
  "wasm-logger",
  "web-sys",
+ "web-time",
  "wee_alloc",
  "wgpu",
 ]

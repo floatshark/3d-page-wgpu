@@ -187,3 +187,52 @@ pub async fn init<'a>() -> WebGPUContext<'a> {
     };
     return context;
 }
+
+pub fn render(context: &WebGPUContext) {
+    let frame: wgpu::SurfaceTexture = context
+        .surface
+        .get_current_texture()
+        .expect("Failed to acquire next swap chain texture");
+
+    let view: wgpu::TextureView = frame
+        .texture
+        .create_view(&wgpu::TextureViewDescriptor::default());
+
+    let mut encoder = context
+        .device
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+    {
+        let mut rpass: wgpu::RenderPass<'_> =
+            encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: None,
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.1,
+                            g: 0.2,
+                            b: 0.3,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+        rpass.push_debug_group("Prepare data for draw.");
+        rpass.set_pipeline(&context.render_pipeline);
+        rpass.set_bind_group(0, &context.bind_group, &[]);
+        rpass.set_index_buffer(context.index_buf.slice(..), wgpu::IndexFormat::Uint16);
+        rpass.set_vertex_buffer(0, context.vertex_buf.slice(..));
+        rpass.pop_debug_group();
+        rpass.insert_debug_marker("Draw!");
+        rpass.draw_indexed(0..context.index_count as u32, 0, 0..1);
+    }
+
+    context.queue.submit(Some(encoder.finish()));
+    frame.present();
+}

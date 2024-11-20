@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-# For Build
+# Core
 log = "0.4.22"
 gloo = "0.11.0"
 futures = "0.3.30"
@@ -19,7 +19,7 @@ wgpu = "22.0.0"
 # Utility
 glam = "0.28.0"
 bytemuck = { version = "1.16.1", features = ["derive", "min_const_generics"]}
-game-loop = "1.2.0"
+web-time = "1.1.0"
 
 [dependencies.web-sys]
 version = "0.3.69"
@@ -36,7 +36,7 @@ features = [
 	'Window',
 	]
 
-# Optimize wasm Size
+# Optimize
 [profile.release]
 panic = 'abort'
 codegen-units = 1

@@ -6,7 +6,6 @@ use wasm_bindgen::JsCast;
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
-const UPDATE_FPS: u32 = 60;
 const CANVAS_ELEMENT_ID: &str = "canvas";
 
 #[wasm_bindgen::prelude::wasm_bindgen(main)]
@@ -29,36 +28,30 @@ pub async fn main() {
     let view: std::rc::Rc<std::cell::Cell<View>> = std::rc::Rc::new(std::cell::Cell::new(View {
         eye: glam::Vec3::new(1.5f32, -5.0, 3.0),
     }));
+    let view_clone: std::rc::Rc<std::cell::Cell<View>> = view.clone();
 
-    let view_clone = view.clone();
+    log::debug!("begin");
 
-    game_loop::game_loop(
-        (webgpu_context, mouse_event_js, view_clone),
-        UPDATE_FPS,
-        0.1,
-        |g: &mut game_loop::GameLoop<
-            (
-                rendering::webgpu::WebGPUContext<'_>,
-                std::rc::Rc<std::cell::Cell<frontend::controls::MouseEventResponseJs>>,
-                std::rc::Rc<std::cell::Cell<View>>,
-            ),
-            game_loop::Time,
-            (),
-        >| {
-            update(&g.game.0, &g.game.1, &g.game.2);
-        },
-        |g: &mut game_loop::GameLoop<
-            (
-                rendering::webgpu::WebGPUContext<'_>,
-                std::rc::Rc<std::cell::Cell<frontend::controls::MouseEventResponseJs>>,
-                std::rc::Rc<std::cell::Cell<View>>,
-            ),
-            game_loop::Time,
-            (),
-        >| {
-            render(&g.game.0);
-        },
-    );
+    let f: std::rc::Rc<_> = std::rc::Rc::new(std::cell::RefCell::new(None));
+    let g: std::rc::Rc<std::cell::RefCell<Option<_>>> = f.clone();
+
+    *g.borrow_mut() = Some(wasm_bindgen::closure::Closure::wrap(Box::new(move || {
+
+        update(&webgpu_context, &mouse_event_js, &view_clone);
+        rendering::webgpu::render(&webgpu_context);
+
+        request_animation_frame(f.borrow().as_ref().unwrap());
+    }) as Box<dyn FnMut()>));
+
+    request_animation_frame(g.borrow().as_ref().unwrap());
+
+    log::debug!("end");
+}
+
+fn request_animation_frame(f: &wasm_bindgen::closure::Closure<dyn FnMut()>) {
+    web_sys::window().unwrap()
+        .request_animation_frame(f.as_ref().unchecked_ref())
+        .expect("should register `requestAnimationFrame` OK");
 }
 
 #[derive(Clone, Copy)]
@@ -108,53 +101,4 @@ fn update(
 
     let view_temp: View = View { eye: eye };
     view.set(view_temp);
-}
-
-fn render(context: &rendering::webgpu::WebGPUContext) {
-    let frame: wgpu::SurfaceTexture = context
-        .surface
-        .get_current_texture()
-        .expect("Failed to acquire next swap chain texture");
-
-    let view: wgpu::TextureView = frame
-        .texture
-        .create_view(&wgpu::TextureViewDescriptor::default());
-
-    let mut encoder = context
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-
-    {
-        let mut rpass: wgpu::RenderPass<'_> =
-            encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: None,
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-        rpass.push_debug_group("Prepare data for draw.");
-        rpass.set_pipeline(&context.render_pipeline);
-        rpass.set_bind_group(0, &context.bind_group, &[]);
-        rpass.set_index_buffer(context.index_buf.slice(..), wgpu::IndexFormat::Uint16);
-        rpass.set_vertex_buffer(0, context.vertex_buf.slice(..));
-        rpass.pop_debug_group();
-        rpass.insert_debug_marker("Draw!");
-        rpass.draw_indexed(0..context.index_count as u32, 0, 0..1);
-    }
-
-    context.queue.submit(Some(encoder.finish()));
-    frame.present();
 }
