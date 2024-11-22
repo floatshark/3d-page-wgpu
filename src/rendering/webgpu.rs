@@ -19,8 +19,10 @@ pub struct WebGPUContext<'a> {
 pub async fn init<'a>() -> WebGPUContext<'a> {
     let canvas: web_sys::Element = gloo::utils::document()
         .get_element_by_id(define::CANVAS_ELEMENT_ID)
-        .unwrap();
-    let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into().unwrap();
+        .expect("Failed to get canvas element");
+    let canvas: web_sys::HtmlCanvasElement = canvas
+        .dyn_into()
+        .expect("Failed to dynamic cast canvas element");
 
     let width: u32 = canvas.client_width() as u32;
     let height: u32 = canvas.client_height() as u32;
@@ -40,7 +42,7 @@ pub async fn init<'a>() -> WebGPUContext<'a> {
             force_fallback_adapter: false,
         })
         .await
-        .unwrap();
+        .expect("Failed to request adapter");
 
     let (device, queue) = adapter
         .request_device(
@@ -53,7 +55,7 @@ pub async fn init<'a>() -> WebGPUContext<'a> {
             None,
         )
         .await
-        .unwrap();
+        .expect("Failed to request device");
 
     let swapchain_capabilities: wgpu::SurfaceCapabilities = surface.get_capabilities(&adapter);
     let swapchain_format: wgpu::TextureFormat = swapchain_capabilities.formats[0];
@@ -71,17 +73,17 @@ pub async fn init<'a>() -> WebGPUContext<'a> {
 
     surface.configure(&device, &config);
 
-    // vertex
+    // buffers
 
     let shader: wgpu::ShaderModule = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: None,
         source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(include_str!(
-            "../shader.wgsl"
+            "../shader/unlit.wgsl"
         ))),
     });
 
     let vertex_size: usize = std::mem::size_of::<common::Vertex>();
-    let (vertex_data, index_data) = common::create_vertices();
+    let (vertex_data, index_data) = common::create_cube();
 
     let vertex_buf: wgpu::Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Vertex Buffer"),
@@ -105,28 +107,88 @@ pub async fn init<'a>() -> WebGPUContext<'a> {
         usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
     });
 
+    let texture = device.create_texture_with_data(
+        &queue,
+        &wgpu::TextureDescriptor {
+            label: (None),
+            size: wgpu::Extent3d {width: 2, height: 2, depth_or_array_layers: 1},
+            mip_level_count: (1),
+            sample_count: (1),
+            dimension: (wgpu::TextureDimension::D2),
+            format: (wgpu::TextureFormat::Rgba8Unorm),
+            usage: (wgpu::TextureUsages::TEXTURE_BINDING),
+            view_formats: (&[]),
+        },
+        wgpu::util::TextureDataOrder::LayerMajor,
+        &[
+            255, 0, 0, 255,
+            0, 0, 255, 255,
+            0, 255, 0, 255,
+            255, 255, 255, 255,
+        ],
+    );
+    let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        address_mode_u: wgpu::AddressMode::ClampToEdge,
+        address_mode_v: wgpu::AddressMode::ClampToEdge,
+        address_mode_w: wgpu::AddressMode::ClampToEdge,
+        mag_filter: wgpu::FilterMode::Linear,
+        min_filter: wgpu::FilterMode::Nearest,
+        mipmap_filter: wgpu::FilterMode::Nearest,
+        ..Default::default()
+    });
+
     let bind_group_layout: wgpu::BindGroupLayout =
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: None,
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: wgpu::BufferSize::new(64),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: wgpu::BufferSize::new(64),
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
         });
 
     let bind_group: wgpu::BindGroup = device.create_bind_group(&wgpu::BindGroupDescriptor {
         layout: &bind_group_layout,
-        entries: &[wgpu::BindGroupEntry {
-            binding: 0,
-            resource: uniform_buf.as_entire_binding(),
-        }],
-        label: None,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform_buf.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::TextureView(&texture_view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::Sampler(&sampler),
+            },
+        ],
+        label: Some("Bind group 0"),
     });
 
     // pipeline
@@ -141,11 +203,18 @@ pub async fn init<'a>() -> WebGPUContext<'a> {
     let vertex_buffers: [wgpu::VertexBufferLayout<'_>; 1] = [wgpu::VertexBufferLayout {
         array_stride: vertex_size as wgpu::BufferAddress,
         step_mode: wgpu::VertexStepMode::Vertex,
-        attributes: &[wgpu::VertexAttribute {
-            format: wgpu::VertexFormat::Float32x4,
-            offset: 0,
-            shader_location: 0,
-        }],
+        attributes: &[
+            wgpu::VertexAttribute {
+                format: wgpu::VertexFormat::Float32x4,
+                offset: 0,
+                shader_location: 0,
+            },
+            wgpu::VertexAttribute {
+                format: wgpu::VertexFormat::Float32x2,
+                offset: std::mem::size_of::<[f32; 4]>() as wgpu::BufferAddress,
+                shader_location: 1,
+            },
+        ],
     }];
 
     let render_pipeline: wgpu::RenderPipeline =
@@ -175,6 +244,8 @@ pub async fn init<'a>() -> WebGPUContext<'a> {
         });
 
     let index_count: u32 = index_data.len() as u32;
+
+    // Return packed values
 
     let context: WebGPUContext<'_> = WebGPUContext {
         surface,

@@ -33,6 +33,8 @@ pub async fn main() {
     let update_context_clone: std::rc::Rc<std::cell::Cell<engine::define::UpdateContext>> =
         update_context.clone();
 
+    // ----------------------------------------------------------------
+
     let f: std::rc::Rc<_> = std::rc::Rc::new(std::cell::RefCell::new(None));
     let g: std::rc::Rc<std::cell::RefCell<Option<_>>> = f.clone();
 
