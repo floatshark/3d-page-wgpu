@@ -47,3 +47,14 @@ pub fn update(
     let view_temp: define::UpdateContext = define::UpdateContext { eye: eye };
     view.set(view_temp);
 }
+
+pub fn update_mdl_load(
+    mdl_reveiver: &std::sync::mpsc::Receiver<(
+        Vec<tobj::Model>,
+        Result<Vec<tobj::Material>, tobj::LoadError>,
+    )>,
+) {
+    if mdl_reveiver.try_recv().is_ok(){
+        log::debug!("model loaded");
+    }
+}

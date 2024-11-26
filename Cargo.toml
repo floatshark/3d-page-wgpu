@@ -7,19 +7,24 @@ edition = "2021"
 
 [dependencies]
 # Core
-log = "0.4.22"
-gloo = "0.11.0"
-futures = "0.3.30"
-wee_alloc = "0.4.5"
+log 					 = "0.4.22"
+gloo 					 = "0.11.0"
+futures 				 = "0.3.30"
+wee_alloc 				 = "0.4.5"
 console_error_panic_hook = "0.1.7"
-wasm-logger = "0.2.0"
-wasm-bindgen = "0.2.92"
-wasm-bindgen-futures = "0.4.42"
-wgpu = "22.0.0"
+wasm-logger 			 = "0.2.0"
+wasm-bindgen 			 = "0.2.92"
+wasm-bindgen-futures 	 = "0.4.42"
+wgpu 					 = "22.0.0"
+
 # Utility
-glam = "0.28.0"
+glam 	 = "0.28.0"
 bytemuck = { version = "1.16.1", features = ["derive", "min_const_generics"]}
 web-time = "1.1.0"
+tobj 	 = { version = "4.0.2", default-features = false, features = ["async"]}
+reqwest  = "0.11"
+anyhow   = "1.0.93"
+cfg-if	 = "1.0.0"
 
 [dependencies.web-sys]
 version = "0.3.69"
@@ -34,11 +39,12 @@ features = [
 	'MouseEvent',
 	'Node',
 	'Window',
+	'Location'
 	]
 
 # Optimize
 [profile.release]
-panic = 'abort'
+panic 		  = 'abort'
 codegen-units = 1
-opt-level = 'z'
-lto = true
+opt-level 	  = 'z'
+lto 		  = true

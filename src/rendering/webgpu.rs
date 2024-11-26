@@ -111,7 +111,11 @@ pub async fn init<'a>() -> WebGPUContext<'a> {
         &queue,
         &wgpu::TextureDescriptor {
             label: (None),
-            size: wgpu::Extent3d {width: 2, height: 2, depth_or_array_layers: 1},
+            size: wgpu::Extent3d {
+                width: 2,
+                height: 2,
+                depth_or_array_layers: 1,
+            },
             mip_level_count: (1),
             sample_count: (1),
             dimension: (wgpu::TextureDimension::D2),
@@ -121,10 +125,7 @@ pub async fn init<'a>() -> WebGPUContext<'a> {
         },
         wgpu::util::TextureDataOrder::LayerMajor,
         &[
-            255, 0, 0, 255,
-            0, 0, 255, 255,
-            0, 255, 0, 255,
-            255, 255, 255, 255,
+            255, 0, 0, 255, 0, 0, 255, 255, 0, 255, 0, 255, 255, 255, 255, 255,
         ],
     );
     let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
