@@ -8,10 +8,13 @@ pub struct WebGPUContext<'a> {
     pub surface: wgpu::Surface<'a>,
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
+    pub shader: wgpu::ShaderModule,
+    pub swapchain_format: wgpu::TextureFormat,
     pub vertex_buf: wgpu::Buffer,
     pub index_buf: wgpu::Buffer,
     pub index_count: u32,
     pub bind_group: wgpu::BindGroup,
+    pub bind_group_layout: wgpu::BindGroupLayout,
     pub uniform_buf: wgpu::Buffer,
     pub render_pipeline: wgpu::RenderPipeline,
 }
@@ -78,7 +81,7 @@ pub async fn init<'a>() -> WebGPUContext<'a> {
     let shader: wgpu::ShaderModule = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: None,
         source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(include_str!(
-            "../shader/unlit.wgsl"
+            "../shader/unlit.wgsl" // TODO: Convert to constant variable
         ))),
     });
 
@@ -252,14 +255,105 @@ pub async fn init<'a>() -> WebGPUContext<'a> {
         surface,
         device,
         queue,
+        shader,
+        swapchain_format,
         vertex_buf,
         index_buf,
         index_count,
         bind_group,
+        bind_group_layout,
         uniform_buf,
         render_pipeline,
     };
     return context;
+}
+
+pub fn override_context(context: &mut WebGPUContext, model: &tobj::Model) {
+    let vertex_data: Vec<common::Vertex> = common::create_vertices_from_obj(model);
+    let index_data: Vec<u32> = model.mesh.indices.clone();
+    let vertex_size: usize = std::mem::size_of::<common::Vertex>();
+
+    let vertex_buf: wgpu::Buffer =
+        context
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Vertex Buffer"),
+                contents: bytemuck::cast_slice(&vertex_data),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+
+    let index_buf: wgpu::Buffer =
+        context
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Index Buffer"),
+                contents: bytemuck::cast_slice(&index_data),
+                usage: wgpu::BufferUsages::INDEX,
+            });
+
+    // ---------------------------------------------------------------------------
+
+    let pipeline_layout: wgpu::PipelineLayout =
+        context
+            .device
+            .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: None,
+                bind_group_layouts: &[&context.bind_group_layout],
+                push_constant_ranges: &[],
+            });
+
+    let vertex_buffers: [wgpu::VertexBufferLayout<'_>; 1] = [wgpu::VertexBufferLayout {
+        array_stride: vertex_size as wgpu::BufferAddress,
+        step_mode: wgpu::VertexStepMode::Vertex,
+        attributes: &[
+            wgpu::VertexAttribute {
+                format: wgpu::VertexFormat::Float32x4,
+                offset: 0,
+                shader_location: 0,
+            },
+            wgpu::VertexAttribute {
+                format: wgpu::VertexFormat::Float32x2,
+                offset: std::mem::size_of::<[f32; 4]>() as wgpu::BufferAddress,
+                shader_location: 1,
+            },
+        ],
+    }];
+
+    let render_pipeline: wgpu::RenderPipeline =
+        context
+            .device
+            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: None,
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &context.shader,
+                    entry_point: define::VS_ENTRY_POINT,
+                    compilation_options: Default::default(),
+                    buffers: &vertex_buffers,
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &context.shader,
+                    entry_point: define::FS_ENTRY_POINT,
+                    compilation_options: Default::default(),
+                    targets: &[Some(context.swapchain_format.into())],
+                }),
+                primitive: wgpu::PrimitiveState {
+                    cull_mode: Some(wgpu::Face::Back),
+                    ..Default::default()
+                },
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
+                cache: None,
+            });
+
+    let index_count: u32 = index_data.len() as u32;
+
+    // Update context
+    context.vertex_buf = vertex_buf;
+    context.index_buf = index_buf;
+    context.render_pipeline = render_pipeline;
+    context.index_count = index_count;
 }
 
 pub fn render(context: &WebGPUContext) {
@@ -300,7 +394,7 @@ pub fn render(context: &WebGPUContext) {
         rpass.push_debug_group("Prepare data for draw.");
         rpass.set_pipeline(&context.render_pipeline);
         rpass.set_bind_group(0, &context.bind_group, &[]);
-        rpass.set_index_buffer(context.index_buf.slice(..), wgpu::IndexFormat::Uint16);
+        rpass.set_index_buffer(context.index_buf.slice(..), wgpu::IndexFormat::Uint32);
         rpass.set_vertex_buffer(0, context.vertex_buf.slice(..));
         rpass.pop_debug_group();
         rpass.insert_debug_marker("Draw!");

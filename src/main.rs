@@ -27,22 +27,13 @@ pub async fn main() {
     frontend::controls::add_event_listener_control(&mouse_event_js);
 
     // Model loading -----------------------------------------------------------
-    /*
-    let (mdl_sender, mdl_receiver) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        futures::executor::block_on(async {
-            let mdl_loaded: (
-                Vec<tobj::Model>,
-                Result<Vec<tobj::Material>, tobj::LoadError>,
-            ) = engine::load::load_mdl_async(engine::define::OBJ_BUNNY_PATH)
-                .await
-                .expect("Failed to load .mdl file");
-            mdl_sender
-                .send(mdl_loaded)
-                .expect("Failed to send mdl data");
-        })
-    });*/
-
+    // TODO: Multithread load, single is too slow
+    let obj_loaded: (
+        Vec<tobj::Model>,
+        Result<Vec<tobj::Material>, tobj::LoadError>,
+    ) = engine::load::load_mdl_async(engine::define::OBJ_BUNNY_PATH)
+        .await
+        .expect("Failed to load .mdl file");
     // -------------------------------------------------------------------------
 
     let update_context: std::rc::Rc<std::cell::Cell<engine::define::UpdateContext>> =
@@ -54,7 +45,10 @@ pub async fn main() {
 
     // Rendering  ---------------------------------------------------------------
 
-    let webgpu_context: rendering::webgpu::WebGPUContext = rendering::webgpu::init().await;
+    let mut webgpu_context: rendering::webgpu::WebGPUContext = rendering::webgpu::init().await;
+    if !obj_loaded.0.is_empty() && !obj_loaded.0.first().unwrap().mesh.positions.is_empty() {
+        rendering::webgpu::override_context(&mut webgpu_context, &obj_loaded.0.first().unwrap());
+    }
 
     // Game loop ----------------------------------------------------------------
 
@@ -62,7 +56,6 @@ pub async fn main() {
     let g: std::rc::Rc<std::cell::RefCell<Option<_>>> = f.clone();
     *g.borrow_mut() = Some(wasm_bindgen::closure::Closure::wrap(Box::new(move || {
         engine::update::update(&webgpu_context, &mouse_event_js, &update_context_clone);
-        //engine::update::update_mdl_load(&mdl_receiver);
 
         rendering::webgpu::render(&webgpu_context);
 

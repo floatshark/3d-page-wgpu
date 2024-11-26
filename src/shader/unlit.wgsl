@@ -1,11 +1,11 @@
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
-    @location(1)       uv: vec2<f32>
+    @location(1)       uv      : vec2<f32>
 };
 
 @group(0) @binding(0) var<uniform> inTransform: mat4x4<f32>;
-@group(0) @binding(1) var inTexture: texture_2d<f32>;
-@group(0) @binding(2) var inSampler: sampler;
+@group(0) @binding(1) var          inTexture  : texture_2d<f32>;
+@group(0) @binding(2) var          inSampler  : sampler;
 
 @vertex
 fn vs_main(

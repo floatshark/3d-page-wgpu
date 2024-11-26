@@ -16,7 +16,7 @@ impl Vertex {
     }
 }
 
-pub fn create_cube() -> (Vec<Vertex>, Vec<u16>) {
+pub fn create_cube() -> (Vec<Vertex>, Vec<u32>) {
     let vertex_data = [
         // top (0, 0, 1)
         Vertex::vertex([-1, -1, 1], [0.0, 0.0]),
@@ -50,7 +50,7 @@ pub fn create_cube() -> (Vec<Vertex>, Vec<u16>) {
         Vertex::vertex([1, -1, -1], [1.0, 1.0]),
     ];
 
-    let index_data: &[u16] = &[
+    let index_data: &[u32] = &[
         0, 1, 2, 2, 3, 0, // top
         4, 5, 6, 6, 7, 4, // bottom
         8, 9, 10, 10, 11, 8, // right
@@ -71,4 +71,23 @@ pub fn create_mvp(aspect_ratio: f32) -> glam::Mat4 {
     let view = glam::Mat4::look_at_rh(INITIAL_EYE_LOCATION, glam::Vec3::ZERO, glam::Vec3::Z);
 
     projection * view
+}
+
+// Suports tobj format -> Vertex
+pub fn create_vertices_from_obj(model: &tobj::Model) -> Vec<Vertex> {
+    let mut vertex_vec: Vec<Vertex> = Vec::new();
+
+    for i in 0..(model.mesh.positions.len() / 3) {
+        vertex_vec.push(Vertex {
+            _pos: [
+                model.mesh.positions[3 * i],
+                model.mesh.positions[3 * i + 1],
+                model.mesh.positions[3 * i + 2],
+                1.0,
+            ],
+            _uv: [model.mesh.texcoords[i], model.mesh.texcoords[i + 1]],
+        });
+    }
+
+    return vertex_vec;
 }
