@@ -7,8 +7,3 @@ pub const FS_ENTRY_POINT: &str = "fs_main";
 
 // Whitch added from McGuire Computer Graphics Archive
 pub const OBJ_BUNNY_PATH: &str = "resource/bunny/bunny.obj";
-
-#[derive(Clone, Copy)]
-pub struct UpdateContext {
-    pub eye: glam::Vec3,
-}

@@ -12,35 +12,31 @@ pub async fn main() {
     console_error_panic_hook::set_once();
     wasm_logger::init(wasm_logger::Config::default());
 
-    log::debug!("begin");
+    log::debug!("Main");
 
     // -------------------------------------------------------------------------
 
     let mouse_event_js: std::rc::Rc<std::cell::Cell<frontend::controls::MouseEventResponseJs>> =
         std::rc::Rc::new(std::cell::Cell::new(
-            frontend::controls::MouseEventResponseJs {
-                movement_x: 0,
-                movement_y: 0,
-                on_click: false,
-            },
+            frontend::controls::MouseEventResponseJs::default(),
         ));
     frontend::controls::add_event_listener_control(&mouse_event_js);
 
     // Model loading -----------------------------------------------------------
     // TODO: Multithread load, single is too slow
+    
     let obj_loaded: (
         Vec<tobj::Model>,
         Result<Vec<tobj::Material>, tobj::LoadError>,
     ) = engine::load::load_mdl_async(engine::define::OBJ_BUNNY_PATH)
         .await
         .expect("Failed to load .mdl file");
+
     // -------------------------------------------------------------------------
 
-    let update_context: std::rc::Rc<std::cell::Cell<engine::define::UpdateContext>> =
-        std::rc::Rc::new(std::cell::Cell::new(engine::define::UpdateContext {
-            eye: glam::Vec3::new(1.5f32, -5.0, 3.0),
-        }));
-    let update_context_clone: std::rc::Rc<std::cell::Cell<engine::define::UpdateContext>> =
+    let update_context: std::rc::Rc<std::cell::Cell<engine::update::UpdateContext>> =
+        std::rc::Rc::new(std::cell::Cell::new(engine::update::UpdateContext::initial()));
+    let update_context_clone: std::rc::Rc<std::cell::Cell<engine::update::UpdateContext>> =
         update_context.clone();
 
     // Rendering  ---------------------------------------------------------------
@@ -56,6 +52,7 @@ pub async fn main() {
     let g: std::rc::Rc<std::cell::RefCell<Option<_>>> = f.clone();
     *g.borrow_mut() = Some(wasm_bindgen::closure::Closure::wrap(Box::new(move || {
         engine::update::update(&webgpu_context, &mouse_event_js, &update_context_clone);
+        engine::update::update_js_context(&mouse_event_js);
 
         rendering::webgpu::render(&webgpu_context);
 
@@ -64,7 +61,7 @@ pub async fn main() {
         as Box<dyn FnMut()>));
     request_animation_frame(g.borrow().as_ref().unwrap());
 
-    log::debug!("end");
+    log::debug!("Main end");
 }
 
 fn request_animation_frame(f: &wasm_bindgen::closure::Closure<dyn FnMut()>) {

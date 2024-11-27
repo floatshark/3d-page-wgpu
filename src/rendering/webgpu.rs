@@ -269,7 +269,7 @@ pub async fn init<'a>() -> WebGPUContext<'a> {
 }
 
 pub fn override_context(context: &mut WebGPUContext, model: &tobj::Model) {
-    let vertex_data: Vec<common::Vertex> = common::create_vertices_from_obj(model);
+    let vertex_data: Vec<common::Vertex> = common::create_vertices_from_obj(model, true);
     let index_data: Vec<u32> = model.mesh.indices.clone();
     let vertex_size: usize = std::mem::size_of::<common::Vertex>();
 
@@ -379,9 +379,9 @@ pub fn render(context: &WebGPUContext) {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
+                            r: 0.8,
+                            g: 0.8,
+                            b: 0.8,
                             a: 1.0,
                         }),
                         store: wgpu::StoreOp::Store,

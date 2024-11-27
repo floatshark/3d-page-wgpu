@@ -74,19 +74,31 @@ pub fn create_mvp(aspect_ratio: f32) -> glam::Mat4 {
 }
 
 // Suports tobj format -> Vertex
-pub fn create_vertices_from_obj(model: &tobj::Model) -> Vec<Vertex> {
+pub fn create_vertices_from_obj(model: &tobj::Model, swap_yz: bool) -> Vec<Vertex> {
     let mut vertex_vec: Vec<Vertex> = Vec::new();
 
     for i in 0..(model.mesh.positions.len() / 3) {
-        vertex_vec.push(Vertex {
-            _pos: [
-                model.mesh.positions[3 * i],
-                model.mesh.positions[3 * i + 1],
-                model.mesh.positions[3 * i + 2],
-                1.0,
-            ],
-            _uv: [model.mesh.texcoords[i], model.mesh.texcoords[i + 1]],
-        });
+        if !swap_yz {
+            vertex_vec.push(Vertex {
+                _pos: [
+                    model.mesh.positions[3 * i],
+                    model.mesh.positions[3 * i + 1],
+                    model.mesh.positions[3 * i + 2],
+                    1.0,
+                ],
+                _uv: [model.mesh.texcoords[i], model.mesh.texcoords[i + 1]],
+            });
+        } else {
+            vertex_vec.push(Vertex {
+                _pos: [
+                    model.mesh.positions[3 * i],
+                    model.mesh.positions[3 * i + 2],
+                    model.mesh.positions[3 * i + 1],
+                    1.0,
+                ],
+                _uv: [model.mesh.texcoords[i], model.mesh.texcoords[i + 1]],
+            });
+        }
     }
 
     return vertex_vec;
