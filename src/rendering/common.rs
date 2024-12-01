@@ -8,7 +8,7 @@ pub struct Vertex {
 }
 
 impl Vertex {
-    pub fn vertex(pos: [i8; 3], uv: [f32; 2]) -> Vertex {
+    pub fn new(pos: [f32; 3], uv: [f32; 2]) -> Vertex {
         Vertex {
             _pos: [pos[0] as f32, pos[1] as f32, pos[2] as f32, 1.0],
             _uv: [uv[0] as f32, uv[1] as f32],
@@ -19,35 +19,35 @@ impl Vertex {
 pub fn create_cube() -> (Vec<Vertex>, Vec<u32>) {
     let vertex_data = [
         // top (0, 0, 1)
-        Vertex::vertex([-1, -1, 1], [0.0, 0.0]),
-        Vertex::vertex([1, -1, 1], [1.0, 0.0]),
-        Vertex::vertex([1, 1, 1], [0.0, 1.0]),
-        Vertex::vertex([-1, 1, 1], [1.0, 1.0]),
+        Vertex::new([-1.0, -1.0, 1.0], [0.0, 0.0]),
+        Vertex::new([1.0, -1.0, 1.0], [1.0, 0.0]),
+        Vertex::new([1.0, 1.0, 1.0], [0.0, 1.0]),
+        Vertex::new([-1.0, 1.0, 1.0], [1.0, 1.0]),
         // bottom (0, 0, -1)
-        Vertex::vertex([-1, 1, -1], [0.0, 0.0]),
-        Vertex::vertex([1, 1, -1], [1.0, 0.0]),
-        Vertex::vertex([1, -1, -1], [0.0, 1.0]),
-        Vertex::vertex([-1, -1, -1], [1.0, 1.0]),
-        // right (1, 0, 0)
-        Vertex::vertex([1, -1, -1], [0.0, 0.0]),
-        Vertex::vertex([1, 1, -1], [0.0, 1.0]),
-        Vertex::vertex([1, 1, 1], [1.0, 0.0]),
-        Vertex::vertex([1, -1, 1], [1.0, 1.0]),
-        // left (-1, 0, 0)
-        Vertex::vertex([-1, -1, 1], [0.0, 0.0]),
-        Vertex::vertex([-1, 1, 1], [1.0, 0.0]),
-        Vertex::vertex([-1, 1, -1], [0.0, 1.0]),
-        Vertex::vertex([-1, -1, -1], [1.0, 1.0]),
-        // front (0, 1, 0)
-        Vertex::vertex([1, 1, -1], [0.0, 0.0]),
-        Vertex::vertex([-1, 1, -1], [1.0, 0.0]),
-        Vertex::vertex([-1, 1, 1], [0.0, 1.0]),
-        Vertex::vertex([1, 1, 1], [1.0, 0.0]),
-        // back (0, -1, 0)
-        Vertex::vertex([1, -1, 1], [0.0, 0.0]),
-        Vertex::vertex([-1, -1, 1], [1.0, 0.0]),
-        Vertex::vertex([-1, -1, -1], [0.0, 1.0]),
-        Vertex::vertex([1, -1, -1], [1.0, 1.0]),
+        Vertex::new([-1.0, 1.0, -1.0], [0.0, 1.0]),
+        Vertex::new([1.0, 1.0, -1.0], [1.0, 0.0]),
+        Vertex::new([1.0, -1.0, -1.0], [0.0, 0.0]),
+        Vertex::new([-1.0, -1.0, -1.0], [1.0, 1.0]),
+        // front (1, 0, 0)
+        Vertex::new([1.0, -1.0, -1.0], [0.0, 0.0]),
+        Vertex::new([1.0, 1.0, -1.0], [1.0, 0.0]),
+        Vertex::new([1.0, 1.0, 1.0], [0.0, 1.0]),
+        Vertex::new([1.0, -1.0, 1.0], [1.0, 0.0]),
+        // back (-1, 0, 0)
+        Vertex::new([-1.0, -1.0, 1.0], [0.0, 0.0]),
+        Vertex::new([-1.0, 1.0, 1.0], [1.0, 1.0]),
+        Vertex::new([-1.0, 1.0, -1.0], [0.0, 1.0]),
+        Vertex::new([-1.0, -1.0, -1.0], [1.0, 0.0]),
+        // right (0, 1, 0)
+        Vertex::new([1.0, 1.0, -1.0], [1.0, 0.0]),
+        Vertex::new([-1.0, 1.0, -1.0], [0.0, 1.0]),
+        Vertex::new([-1.0, 1.0, 1.0], [1.0, 1.0]),
+        Vertex::new([1.0, 1.0, 1.0], [0.0, 1.0]),
+        // left (0, -1, 0)
+        Vertex::new([1.0, -1.0, 1.0], [1.0, 0.0]),
+        Vertex::new([-1.0, -1.0, 1.0], [0.0, 0.0]),
+        Vertex::new([-1.0, -1.0, -1.0], [0.0, 1.0]),
+        Vertex::new([1.0, -1.0, -1.0], [1.0, 1.0]),
     ];
 
     let index_data: &[u32] = &[

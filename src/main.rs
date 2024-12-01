@@ -24,18 +24,20 @@ pub async fn main() {
 
     // Model loading -----------------------------------------------------------
     // TODO: Multithread load, single is too slow
-    
+
     let obj_loaded: (
         Vec<tobj::Model>,
         Result<Vec<tobj::Material>, tobj::LoadError>,
     ) = engine::load::load_mdl_async(engine::define::OBJ_BUNNY_PATH)
         .await
         .expect("Failed to load .mdl file");
-
+    
     // -------------------------------------------------------------------------
 
     let update_context: std::rc::Rc<std::cell::Cell<engine::update::UpdateContext>> =
-        std::rc::Rc::new(std::cell::Cell::new(engine::update::UpdateContext::initial()));
+        std::rc::Rc::new(std::cell::Cell::new(
+            engine::update::UpdateContext::get_init(),
+        ));
     let update_context_clone: std::rc::Rc<std::cell::Cell<engine::update::UpdateContext>> =
         update_context.clone();
 

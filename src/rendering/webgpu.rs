@@ -10,6 +10,7 @@ pub struct WebGPUContext<'a> {
     pub queue: wgpu::Queue,
     pub shader: wgpu::ShaderModule,
     pub swapchain_format: wgpu::TextureFormat,
+    pub depth_texture: wgpu::Texture,
     pub vertex_buf: wgpu::Buffer,
     pub index_buf: wgpu::Buffer,
     pub index_count: u32,
@@ -30,7 +31,7 @@ pub async fn init<'a>() -> WebGPUContext<'a> {
     let width: u32 = canvas.client_width() as u32;
     let height: u32 = canvas.client_height() as u32;
 
-    // -----
+    // webgpu context
 
     let instance: wgpu::Instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
     let surface_target: wgpu::SurfaceTarget<'_> = wgpu::SurfaceTarget::Canvas(canvas);
@@ -195,6 +196,21 @@ pub async fn init<'a>() -> WebGPUContext<'a> {
         label: Some("Bind group 0"),
     });
 
+    let depth_texture: wgpu::Texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("depth texture"),
+        size: wgpu::Extent3d {
+            width: width,
+            height: height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Depth24Plus,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        view_formats: &[],
+    });
+
     // pipeline
 
     let pipeline_layout: wgpu::PipelineLayout =
@@ -227,13 +243,13 @@ pub async fn init<'a>() -> WebGPUContext<'a> {
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: define::VS_ENTRY_POINT,
+                entry_point: Some(define::VS_ENTRY_POINT),
                 compilation_options: Default::default(),
                 buffers: &vertex_buffers,
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: define::FS_ENTRY_POINT,
+                entry_point: Some(define::FS_ENTRY_POINT),
                 compilation_options: Default::default(),
                 targets: &[Some(swapchain_format.into())],
             }),
@@ -241,7 +257,13 @@ pub async fn init<'a>() -> WebGPUContext<'a> {
                 cull_mode: Some(wgpu::Face::Back),
                 ..Default::default()
             },
-            depth_stencil: None,
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth24Plus,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::LessEqual,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
             multisample: wgpu::MultisampleState::default(),
             multiview: None,
             cache: None,
@@ -257,6 +279,7 @@ pub async fn init<'a>() -> WebGPUContext<'a> {
         queue,
         shader,
         swapchain_format,
+        depth_texture,
         vertex_buf,
         index_buf,
         index_count,
@@ -327,13 +350,13 @@ pub fn override_context(context: &mut WebGPUContext, model: &tobj::Model) {
                 layout: Some(&pipeline_layout),
                 vertex: wgpu::VertexState {
                     module: &context.shader,
-                    entry_point: define::VS_ENTRY_POINT,
+                    entry_point: Some(define::VS_ENTRY_POINT),
                     compilation_options: Default::default(),
                     buffers: &vertex_buffers,
                 },
                 fragment: Some(wgpu::FragmentState {
                     module: &context.shader,
-                    entry_point: define::FS_ENTRY_POINT,
+                    entry_point: Some(define::FS_ENTRY_POINT),
                     compilation_options: Default::default(),
                     targets: &[Some(context.swapchain_format.into())],
                 }),
@@ -341,7 +364,13 @@ pub fn override_context(context: &mut WebGPUContext, model: &tobj::Model) {
                     cull_mode: Some(wgpu::Face::Back),
                     ..Default::default()
                 },
-                depth_stencil: None,
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: wgpu::TextureFormat::Depth24Plus,
+                    depth_write_enabled: true,
+                    depth_compare: wgpu::CompareFunction::LessEqual,
+                    stencil: wgpu::StencilState::default(),
+                    bias: wgpu::DepthBiasState::default(),
+                }),
                 multisample: wgpu::MultisampleState::default(),
                 multiview: None,
                 cache: None,
@@ -366,6 +395,20 @@ pub fn render(context: &WebGPUContext) {
         .texture
         .create_view(&wgpu::TextureViewDescriptor::default());
 
+    let depth_texture_view: wgpu::TextureView =
+        context
+            .depth_texture
+            .create_view(&wgpu::TextureViewDescriptor {
+                label: Some("depth texture view"),
+                format: Some(wgpu::TextureFormat::Depth24Plus),
+                aspect: wgpu::TextureAspect::DepthOnly,
+                base_array_layer: 0,
+                array_layer_count: Some(1),
+                base_mip_level: 0,
+                mip_level_count: Some(1),
+                dimension: Some(wgpu::TextureViewDimension::D2),
+            });
+
     let mut encoder = context
         .device
         .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
@@ -387,7 +430,14 @@ pub fn render(context: &WebGPUContext) {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: None,
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &depth_texture_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
