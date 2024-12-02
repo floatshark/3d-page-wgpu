@@ -24,21 +24,14 @@ impl UpdateContext {
     }
 }
 
-pub fn update(
-    render_context: &rendering::webgpu::WebGPUContext,
+// ---------------------------------------------------------------------------------------
+
+pub fn update_js(
     mouse_event_js: &std::rc::Rc<std::cell::Cell<frontend::controls::MouseEventResponseJs>>,
     context: &std::rc::Rc<std::cell::Cell<UpdateContext>>,
 ) {
     let mut eye: glam::Vec3 = context.get().eye_location;
     let mut direction: glam::Vec3 = context.get().eye_direction;
-
-    let canvas: web_sys::Element = gloo::utils::document()
-        .get_element_by_id(define::CANVAS_ELEMENT_ID)
-        .unwrap();
-    let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into().unwrap();
-    let width: u32 = canvas.client_width() as u32;
-    let height: u32 = canvas.client_height() as u32;
-    let aspect_ratio: f32 = width as f32 / height as f32;
 
     // Calculate eye direction (rotation)
     let on_click: bool = mouse_event_js.get().on_click;
@@ -70,29 +63,42 @@ pub fn update(
         eye += -1.0 * direction.normalize() * mouse_event_js.get().wheel_delta_y as f32 * 0.005;
     }
 
-    // Create matrices and write buffer
-    let view_matrix = glam::Mat4::look_to_rh(eye, direction, glam::Vec3::Z);
-    let projection_matrix: glam::Mat4 =
-        glam::Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, aspect_ratio, 0.0, 10.0);
-    let mx_total: glam::Mat4 = projection_matrix * view_matrix;
-    let mx_ref: &[f32; 16] = mx_total.as_ref();
-    render_context
-        .queue
-        .write_buffer(&render_context.uniform_buf, 0, bytemuck::cast_slice(mx_ref));
-
     // Update
     let view_temp: UpdateContext = UpdateContext {
         eye_location: eye,
         eye_direction: direction,
     };
     context.set(view_temp);
-}
 
-pub fn update_js_context(
-    mouse_event_js: &std::rc::Rc<std::cell::Cell<frontend::controls::MouseEventResponseJs>>,
-) {
     let mut override_event: frontend::controls::MouseEventResponseJs = mouse_event_js.get();
     override_event.on_click = false;
     override_event.on_wheel = false;
     mouse_event_js.set(override_event);
+}
+
+pub fn update_render_resource(
+    context: &std::rc::Rc<std::cell::Cell<UpdateContext>>,
+    interface: &rendering::webgpu::WebGPUInterface,
+    resource: &rendering::webgpu::WebGPURenderResource,
+) {
+    let canvas: web_sys::Element = gloo::utils::document()
+        .get_element_by_id(define::CANVAS_ELEMENT_ID)
+        .unwrap();
+    let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into().unwrap();
+    let width: u32 = canvas.client_width() as u32;
+    let height: u32 = canvas.client_height() as u32;
+    let aspect_ratio: f32 = width as f32 / height as f32;
+
+    let eye: glam::Vec3 = context.get().eye_location;
+    let direction: glam::Vec3 = context.get().eye_direction;
+
+    // Create matrices and write buffer
+    let view_matrix = glam::Mat4::look_to_rh(eye, direction, glam::Vec3::Z);
+    let projection_matrix: glam::Mat4 =
+        glam::Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, aspect_ratio, 0.0, 10.0);
+    let mx_total: glam::Mat4 = projection_matrix * view_matrix;
+    let mx_ref: &[f32; 16] = mx_total.as_ref();
+    interface
+        .queue
+        .write_buffer(&resource.uniform_buf, 0, bytemuck::cast_slice(mx_ref));
 }

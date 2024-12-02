@@ -4,13 +4,18 @@ use crate::rendering::common;
 use wasm_bindgen::JsCast;
 use wgpu::util::DeviceExt;
 
-pub struct WebGPUContext<'a> {
+pub const WGPU_DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24Plus;
+
+pub struct WebGPUInterface<'a> {
     pub surface: wgpu::Surface<'a>,
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
-    pub shader: wgpu::ShaderModule,
     pub swapchain_format: wgpu::TextureFormat,
     pub depth_texture: wgpu::Texture,
+}
+
+pub struct WebGPURenderResource {
+    pub shader: wgpu::ShaderModule,
     pub vertex_buf: wgpu::Buffer,
     pub index_buf: wgpu::Buffer,
     pub index_count: u32,
@@ -20,7 +25,9 @@ pub struct WebGPUContext<'a> {
     pub render_pipeline: wgpu::RenderPipeline,
 }
 
-pub async fn init<'a>() -> WebGPUContext<'a> {
+// --------------------------------------------------------------------------------
+
+pub async fn init_webgpu<'a>() -> WebGPUInterface<'a> {
     let canvas: web_sys::Element = gloo::utils::document()
         .get_element_by_id(define::CANVAS_ELEMENT_ID)
         .expect("Failed to get canvas element");
@@ -31,7 +38,7 @@ pub async fn init<'a>() -> WebGPUContext<'a> {
     let width: u32 = canvas.client_width() as u32;
     let height: u32 = canvas.client_height() as u32;
 
-    // webgpu context
+    // Initialize webgpu
 
     let instance: wgpu::Instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
     let surface_target: wgpu::SurfaceTarget<'_> = wgpu::SurfaceTarget::Canvas(canvas);
@@ -77,125 +84,6 @@ pub async fn init<'a>() -> WebGPUContext<'a> {
 
     surface.configure(&device, &config);
 
-    // buffers
-
-    let shader: wgpu::ShaderModule = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: None,
-        source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(include_str!(
-            "../shader/unlit.wgsl" // TODO: Convert to constant variable
-        ))),
-    });
-
-    let vertex_size: usize = std::mem::size_of::<common::Vertex>();
-    let (vertex_data, index_data) = common::create_cube();
-
-    let vertex_buf: wgpu::Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("Vertex Buffer"),
-        contents: bytemuck::cast_slice(&vertex_data),
-        usage: wgpu::BufferUsages::VERTEX,
-    });
-
-    let index_buf: wgpu::Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("Index Buffer"),
-        contents: bytemuck::cast_slice(&index_data),
-        usage: wgpu::BufferUsages::INDEX,
-    });
-
-    // bindings
-
-    let mvp_total = common::create_mvp(width as f32 / height as f32);
-    let mvp_ref: &[f32; 16] = mvp_total.as_ref();
-    let uniform_buf: wgpu::Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("Uniform Buffer"),
-        contents: bytemuck::cast_slice(mvp_ref),
-        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-    });
-
-    let texture = device.create_texture_with_data(
-        &queue,
-        &wgpu::TextureDescriptor {
-            label: (None),
-            size: wgpu::Extent3d {
-                width: 2,
-                height: 2,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: (1),
-            sample_count: (1),
-            dimension: (wgpu::TextureDimension::D2),
-            format: (wgpu::TextureFormat::Rgba8Unorm),
-            usage: (wgpu::TextureUsages::TEXTURE_BINDING),
-            view_formats: (&[]),
-        },
-        wgpu::util::TextureDataOrder::LayerMajor,
-        &[
-            255, 0, 0, 255, 0, 0, 255, 255, 0, 255, 0, 255, 255, 255, 255, 255,
-        ],
-    );
-    let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-        address_mode_u: wgpu::AddressMode::ClampToEdge,
-        address_mode_v: wgpu::AddressMode::ClampToEdge,
-        address_mode_w: wgpu::AddressMode::ClampToEdge,
-        mag_filter: wgpu::FilterMode::Linear,
-        min_filter: wgpu::FilterMode::Nearest,
-        mipmap_filter: wgpu::FilterMode::Nearest,
-        ..Default::default()
-    });
-
-    let bind_group_layout: wgpu::BindGroupLayout =
-        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: None,
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: wgpu::BufferSize::new(64),
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        multisampled: false,
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        });
-
-    let bind_group: wgpu::BindGroup = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        layout: &bind_group_layout,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: uniform_buf.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: wgpu::BindingResource::TextureView(&texture_view),
-            },
-            wgpu::BindGroupEntry {
-                binding: 2,
-                resource: wgpu::BindingResource::Sampler(&sampler),
-            },
-        ],
-        label: Some("Bind group 0"),
-    });
-
     let depth_texture: wgpu::Texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("depth texture"),
         size: wgpu::Extent3d {
@@ -206,100 +94,52 @@ pub async fn init<'a>() -> WebGPUContext<'a> {
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::Depth24Plus,
+        format: WGPU_DEPTH_FORMAT,
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
         view_formats: &[],
     });
 
-    // pipeline
+    // Return webgpu resource
 
-    let pipeline_layout: wgpu::PipelineLayout =
-        device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: None,
-            bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
-        });
-
-    let vertex_buffers: [wgpu::VertexBufferLayout<'_>; 1] = [wgpu::VertexBufferLayout {
-        array_stride: vertex_size as wgpu::BufferAddress,
-        step_mode: wgpu::VertexStepMode::Vertex,
-        attributes: &[
-            wgpu::VertexAttribute {
-                format: wgpu::VertexFormat::Float32x4,
-                offset: 0,
-                shader_location: 0,
-            },
-            wgpu::VertexAttribute {
-                format: wgpu::VertexFormat::Float32x2,
-                offset: (std::mem::size_of::<[f32; 4]>() + std::mem::size_of::<[f32; 3]>())
-                    as wgpu::BufferAddress,
-                shader_location: 1,
-            },
-        ],
-    }];
-
-    let render_pipeline: wgpu::RenderPipeline =
-        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: None,
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some(define::VS_ENTRY_POINT),
-                compilation_options: Default::default(),
-                buffers: &vertex_buffers,
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some(define::FS_ENTRY_POINT),
-                compilation_options: Default::default(),
-                targets: &[Some(swapchain_format.into())],
-            }),
-            primitive: wgpu::PrimitiveState {
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                ..Default::default()
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: wgpu::TextureFormat::Depth24Plus,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::LessEqual,
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
-        });
-
-    let index_count: u32 = index_data.len() as u32;
-
-    // Return packed values
-
-    let context: WebGPUContext<'_> = WebGPUContext {
+    let resource: WebGPUInterface<'_> = WebGPUInterface {
         surface,
         device,
         queue,
-        shader,
         swapchain_format,
         depth_texture,
-        vertex_buf,
-        index_buf,
-        index_count,
-        bind_group,
-        bind_group_layout,
-        uniform_buf,
-        render_pipeline,
     };
-    return context;
+
+    return resource;
 }
 
-pub fn override_context(context: &mut WebGPUContext, model: &tobj::Model) {
-    let vertex_data: Vec<common::Vertex> = common::create_vertices_from_obj(model, true);
-    let index_data: Vec<u32> = model.mesh.indices.clone();
+// --------------------------------------------------------------------------------
+
+pub fn init_webgpu_color_shader(interface: &WebGPUInterface) -> WebGPURenderResource {
+    let canvas: web_sys::Element = gloo::utils::document()
+        .get_element_by_id(define::CANVAS_ELEMENT_ID)
+        .expect("Failed to get canvas element");
+    let canvas: web_sys::HtmlCanvasElement = canvas
+        .dyn_into()
+        .expect("Failed to dynamic cast canvas element");
+
+    let width: u32 = canvas.client_width() as u32;
+    let height: u32 = canvas.client_height() as u32;
+
+    let shader: wgpu::ShaderModule =
+        interface
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: None,
+                source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(include_str!(
+                    "../shader/color.wgsl" // TODO: Convert to constant variable
+                ))),
+            });
+
     let vertex_size: usize = std::mem::size_of::<common::Vertex>();
+    let (vertex_data, index_data) = common::create_cube();
 
     let vertex_buf: wgpu::Buffer =
-        context
+        interface
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Vertex Buffer"),
@@ -308,7 +148,7 @@ pub fn override_context(context: &mut WebGPUContext, model: &tobj::Model) {
             });
 
     let index_buf: wgpu::Buffer =
-        context
+        interface
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Index Buffer"),
@@ -316,14 +156,56 @@ pub fn override_context(context: &mut WebGPUContext, model: &tobj::Model) {
                 usage: wgpu::BufferUsages::INDEX,
             });
 
-    // ---------------------------------------------------------------------------
+    // bindings
+
+    let mvp_total = common::create_mvp(width as f32 / height as f32);
+    let mvp_ref: &[f32; 16] = mvp_total.as_ref();
+    let uniform_buf: wgpu::Buffer =
+        interface
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Uniform Buffer"),
+                contents: bytemuck::cast_slice(mvp_ref),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            });
+
+    let bind_group_layout: wgpu::BindGroupLayout =
+        interface
+            .device
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: None,
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: wgpu::BufferSize::new(64),
+                    },
+                    count: None,
+                }],
+            });
+
+    let bind_group: wgpu::BindGroup =
+        interface
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &bind_group_layout,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: uniform_buf.as_entire_binding(),
+                }],
+                label: Some("Bind group 0"),
+            });
+
+    // pipeline
 
     let pipeline_layout: wgpu::PipelineLayout =
-        context
+        interface
             .device
             .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: None,
-                bind_group_layouts: &[&context.bind_group_layout],
+                bind_group_layouts: &[&bind_group_layout],
                 push_constant_ranges: &[],
             });
 
@@ -337,32 +219,33 @@ pub fn override_context(context: &mut WebGPUContext, model: &tobj::Model) {
                 shader_location: 0,
             },
             wgpu::VertexAttribute {
-                format: wgpu::VertexFormat::Float32x2,
-                offset: std::mem::size_of::<[f32; 4]>() as wgpu::BufferAddress,
+                format: wgpu::VertexFormat::Float32x3,
+                offset: (std::mem::size_of::<[f32; 4]>()) as wgpu::BufferAddress,
                 shader_location: 1,
             },
         ],
     }];
 
     let render_pipeline: wgpu::RenderPipeline =
-        context
+        interface
             .device
             .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: None,
                 layout: Some(&pipeline_layout),
                 vertex: wgpu::VertexState {
-                    module: &context.shader,
+                    module: &shader,
                     entry_point: Some(define::VS_ENTRY_POINT),
                     compilation_options: Default::default(),
                     buffers: &vertex_buffers,
                 },
                 fragment: Some(wgpu::FragmentState {
-                    module: &context.shader,
+                    module: &shader,
                     entry_point: Some(define::FS_ENTRY_POINT),
                     compilation_options: Default::default(),
-                    targets: &[Some(context.swapchain_format.into())],
+                    targets: &[Some(interface.swapchain_format.into())],
                 }),
                 primitive: wgpu::PrimitiveState {
+                    front_face: wgpu::FrontFace::Ccw,
                     cull_mode: Some(wgpu::Face::Back),
                     ..Default::default()
                 },
@@ -380,15 +263,24 @@ pub fn override_context(context: &mut WebGPUContext, model: &tobj::Model) {
 
     let index_count: u32 = index_data.len() as u32;
 
-    // Update context
-    context.vertex_buf = vertex_buf;
-    context.index_buf = index_buf;
-    context.render_pipeline = render_pipeline;
-    context.index_count = index_count;
+    let render_resource: WebGPURenderResource = WebGPURenderResource {
+        shader,
+        vertex_buf,
+        index_buf,
+        index_count,
+        bind_group,
+        bind_group_layout,
+        uniform_buf,
+        render_pipeline,
+    };
+
+    return render_resource;
 }
 
-pub fn render(context: &WebGPUContext) {
-    let frame: wgpu::SurfaceTexture = context
+// --------------------------------------------------------------------------------
+
+pub fn render_main(interface: &WebGPUInterface, resource: &WebGPURenderResource) {
+    let frame: wgpu::SurfaceTexture = interface
         .surface
         .get_current_texture()
         .expect("Failed to acquire next swap chain texture");
@@ -398,7 +290,7 @@ pub fn render(context: &WebGPUContext) {
         .create_view(&wgpu::TextureViewDescriptor::default());
 
     let depth_texture_view: wgpu::TextureView =
-        context
+        interface
             .depth_texture
             .create_view(&wgpu::TextureViewDescriptor {
                 label: Some("depth texture view"),
@@ -411,7 +303,7 @@ pub fn render(context: &WebGPUContext) {
                 dimension: Some(wgpu::TextureViewDimension::D2),
             });
 
-    let mut encoder = context
+    let mut encoder = interface
         .device
         .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
@@ -443,16 +335,17 @@ pub fn render(context: &WebGPUContext) {
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
+
         rpass.push_debug_group("Prepare data for draw.");
-        rpass.set_pipeline(&context.render_pipeline);
-        rpass.set_bind_group(0, &context.bind_group, &[]);
-        rpass.set_index_buffer(context.index_buf.slice(..), wgpu::IndexFormat::Uint32);
-        rpass.set_vertex_buffer(0, context.vertex_buf.slice(..));
+        rpass.set_pipeline(&resource.render_pipeline);
+        rpass.set_bind_group(0, &resource.bind_group, &[]);
+        rpass.set_index_buffer(resource.index_buf.slice(..), wgpu::IndexFormat::Uint32);
+        rpass.set_vertex_buffer(0, resource.vertex_buf.slice(..));
         rpass.pop_debug_group();
         rpass.insert_debug_marker("Draw!");
-        rpass.draw_indexed(0..context.index_count as u32, 0, 0..1);
+        rpass.draw_indexed(0..resource.index_count as u32, 0, 0..1);
     }
 
-    context.queue.submit(Some(encoder.finish()));
+    interface.queue.submit(Some(encoder.finish()));
     frame.present();
 }

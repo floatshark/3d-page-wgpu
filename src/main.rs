@@ -43,20 +43,23 @@ pub async fn main() {
 
     // Rendering  ---------------------------------------------------------------
 
-    let mut webgpu_context: rendering::webgpu::WebGPUContext = rendering::webgpu::init().await;
-    /*if !obj_loaded.0.is_empty() && !obj_loaded.0.first().unwrap().mesh.positions.is_empty() {
-        rendering::webgpu::override_context(&mut webgpu_context, &obj_loaded.0.first().unwrap());
-    }*/
-
+    let webgpu_interface: rendering::webgpu::WebGPUInterface =
+        rendering::webgpu::init_webgpu().await;
+    let webgpu_resource = rendering::webgpu::init_webgpu_color_shader(&webgpu_interface);
+    
     // Game loop ----------------------------------------------------------------
 
     let f: std::rc::Rc<_> = std::rc::Rc::new(std::cell::RefCell::new(None));
     let g: std::rc::Rc<std::cell::RefCell<Option<_>>> = f.clone();
     *g.borrow_mut() = Some(wasm_bindgen::closure::Closure::wrap(Box::new(move || {
-        engine::update::update(&webgpu_context, &mouse_event_js, &update_context_clone);
-        engine::update::update_js_context(&mouse_event_js);
+        engine::update::update_js(&mouse_event_js, &update_context_clone);
+        engine::update::update_render_resource(
+            &update_context_clone,
+            &webgpu_interface,
+            &webgpu_resource,
+        );
 
-        rendering::webgpu::render(&webgpu_context);
+        rendering::webgpu::render_main(&webgpu_interface, &webgpu_resource);
 
         request_animation_frame(f.borrow().as_ref().unwrap());
     })
