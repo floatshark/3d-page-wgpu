@@ -22,5 +22,4 @@ fn vs_main(
 fn fs_main(vertex: VertexOutput) -> @location(0) vec4<f32> {
     var tex = textureSample(inTexture, inSampler, vertex.uv);
     return tex;
-    //return vec4<f32>(vertex.uv[0], vertex.uv[1], 0, 1);
 }

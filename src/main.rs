@@ -25,13 +25,13 @@ pub async fn main() {
     // Model loading -----------------------------------------------------------
     // TODO: Multithread load, single is too slow
 
-    let obj_loaded: (
+    /*let obj_loaded: (
         Vec<tobj::Model>,
         Result<Vec<tobj::Material>, tobj::LoadError>,
     ) = engine::load::load_mdl_async(engine::define::OBJ_BUNNY_PATH)
         .await
         .expect("Failed to load .mdl file");
-    
+        */
     // -------------------------------------------------------------------------
 
     let update_context: std::rc::Rc<std::cell::Cell<engine::update::UpdateContext>> =
@@ -44,9 +44,9 @@ pub async fn main() {
     // Rendering  ---------------------------------------------------------------
 
     let mut webgpu_context: rendering::webgpu::WebGPUContext = rendering::webgpu::init().await;
-    if !obj_loaded.0.is_empty() && !obj_loaded.0.first().unwrap().mesh.positions.is_empty() {
+    /*if !obj_loaded.0.is_empty() && !obj_loaded.0.first().unwrap().mesh.positions.is_empty() {
         rendering::webgpu::override_context(&mut webgpu_context, &obj_loaded.0.first().unwrap());
-    }
+    }*/
 
     // Game loop ----------------------------------------------------------------
 

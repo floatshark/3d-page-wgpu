@@ -231,7 +231,8 @@ pub async fn init<'a>() -> WebGPUContext<'a> {
             },
             wgpu::VertexAttribute {
                 format: wgpu::VertexFormat::Float32x2,
-                offset: std::mem::size_of::<[f32; 4]>() as wgpu::BufferAddress,
+                offset: (std::mem::size_of::<[f32; 4]>() + std::mem::size_of::<[f32; 3]>())
+                    as wgpu::BufferAddress,
                 shader_location: 1,
             },
         ],
@@ -254,6 +255,7 @@ pub async fn init<'a>() -> WebGPUContext<'a> {
                 targets: &[Some(swapchain_format.into())],
             }),
             primitive: wgpu::PrimitiveState {
+                front_face: wgpu::FrontFace::Ccw,
                 cull_mode: Some(wgpu::Face::Back),
                 ..Default::default()
             },

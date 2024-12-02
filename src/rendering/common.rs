@@ -4,59 +4,39 @@ pub const INITIAL_EYE_LOCATION: glam::Vec3 = glam::Vec3::new(1.5f32, -5.0, 3.0);
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex {
     _pos: [f32; 4],
+    _color: [f32; 3],
     _uv: [f32; 2],
 }
 
 impl Vertex {
-    pub fn new(pos: [f32; 3], uv: [f32; 2]) -> Vertex {
+    pub fn new(pos: [f32; 3], color: [f32; 3], uv: [f32; 2]) -> Vertex {
         Vertex {
-            _pos: [pos[0] as f32, pos[1] as f32, pos[2] as f32, 1.0],
-            _uv: [uv[0] as f32, uv[1] as f32],
+            _pos: [pos[0], pos[1], pos[2], 1.0],
+            _color: color,
+            _uv: uv,
         }
     }
 }
 
 pub fn create_cube() -> (Vec<Vertex>, Vec<u32>) {
     let vertex_data = [
-        // top (0, 0, 1)
-        Vertex::new([-1.0, -1.0, 1.0], [0.0, 0.0]),
-        Vertex::new([1.0, -1.0, 1.0], [1.0, 0.0]),
-        Vertex::new([1.0, 1.0, 1.0], [0.0, 1.0]),
-        Vertex::new([-1.0, 1.0, 1.0], [1.0, 1.0]),
-        // bottom (0, 0, -1)
-        Vertex::new([-1.0, 1.0, -1.0], [0.0, 1.0]),
-        Vertex::new([1.0, 1.0, -1.0], [1.0, 0.0]),
-        Vertex::new([1.0, -1.0, -1.0], [0.0, 0.0]),
-        Vertex::new([-1.0, -1.0, -1.0], [1.0, 1.0]),
-        // front (1, 0, 0)
-        Vertex::new([1.0, -1.0, -1.0], [0.0, 0.0]),
-        Vertex::new([1.0, 1.0, -1.0], [1.0, 0.0]),
-        Vertex::new([1.0, 1.0, 1.0], [0.0, 1.0]),
-        Vertex::new([1.0, -1.0, 1.0], [1.0, 0.0]),
-        // back (-1, 0, 0)
-        Vertex::new([-1.0, -1.0, 1.0], [0.0, 0.0]),
-        Vertex::new([-1.0, 1.0, 1.0], [1.0, 1.0]),
-        Vertex::new([-1.0, 1.0, -1.0], [0.0, 1.0]),
-        Vertex::new([-1.0, -1.0, -1.0], [1.0, 0.0]),
-        // right (0, 1, 0)
-        Vertex::new([1.0, 1.0, -1.0], [1.0, 0.0]),
-        Vertex::new([-1.0, 1.0, -1.0], [0.0, 1.0]),
-        Vertex::new([-1.0, 1.0, 1.0], [1.0, 1.0]),
-        Vertex::new([1.0, 1.0, 1.0], [0.0, 1.0]),
-        // left (0, -1, 0)
-        Vertex::new([1.0, -1.0, 1.0], [1.0, 0.0]),
-        Vertex::new([-1.0, -1.0, 1.0], [0.0, 0.0]),
-        Vertex::new([-1.0, -1.0, -1.0], [0.0, 1.0]),
-        Vertex::new([1.0, -1.0, -1.0], [1.0, 1.0]),
+        Vertex::new([-1.0, -1.0, 1.0], [0.0, 0.0, 1.0], [0.0, 0.0]),
+        Vertex::new([1.0, -1.0, 1.0], [1.0, 0.0, 1.0], [1.0, 0.0]),
+        Vertex::new([-1.0, 1.0, 1.0], [0.0, 1.0, 1.0], [0.0, 1.0]),
+        Vertex::new([1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0]),
+        Vertex::new([-1.0, -1.0, -1.0], [1.0, 0.0, 0.0], [0.0, 0.0]),
+        Vertex::new([1.0, -1.0, -1.0], [0.0, 0.0, 0.0], [1.0, 0.0]),
+        Vertex::new([-1.0, 1.0, -1.0], [1.0, 1.0, 0.0], [0.0, 1.0]),
+        Vertex::new([1.0, 1.0, -1.0], [0.0, 1.0, 0.0], [1.0, 1.0]),
     ];
 
     let index_data: &[u32] = &[
-        0, 1, 2, 2, 3, 0, // top
-        4, 5, 6, 6, 7, 4, // bottom
-        8, 9, 10, 10, 11, 8, // right
-        12, 13, 14, 14, 15, 12, // left
-        16, 17, 18, 18, 19, 16, // front
-        20, 21, 22, 22, 23, 20, // back
+        0, 1, 2, 2, 1, 3, // top
+        5, 4, 7, 7, 4, 6, // bottom
+        1, 5, 3, 3, 5, 7, // front
+        2, 6, 0, 0, 6, 4, // back
+        3, 7, 2, 2, 7, 6, // right
+        0, 4, 1, 1, 4, 5, // left
     ];
 
     (vertex_data.to_vec(), index_data.to_vec())
@@ -78,27 +58,31 @@ pub fn create_vertices_from_obj(model: &tobj::Model, swap_yz: bool) -> Vec<Verte
     let mut vertex_vec: Vec<Vertex> = Vec::new();
 
     for i in 0..(model.mesh.positions.len() / 3) {
-        if !swap_yz {
-            vertex_vec.push(Vertex {
-                _pos: [
-                    model.mesh.positions[3 * i],
-                    model.mesh.positions[3 * i + 1],
-                    model.mesh.positions[3 * i + 2],
-                    1.0,
-                ],
-                _uv: [model.mesh.texcoords[i], model.mesh.texcoords[i + 1]],
-            });
-        } else {
-            vertex_vec.push(Vertex {
-                _pos: [
-                    model.mesh.positions[3 * i],
-                    model.mesh.positions[3 * i + 2],
-                    model.mesh.positions[3 * i + 1],
-                    1.0,
-                ],
-                _uv: [model.mesh.texcoords[i], model.mesh.texcoords[i + 1]],
-            });
+        let mut pos: [f32; 3] = [
+            model.mesh.positions[3 * i],
+            model.mesh.positions[3 * i + 1],
+            model.mesh.positions[3 * i + 2],
+        ];
+        let mut color = [0.0, 0.0, 0.0];
+        if model.mesh.vertex_color.len() > i * 3 {
+            color = [
+                model.mesh.vertex_color[3 * i],
+                model.mesh.vertex_color[3 * i + 1],
+                model.mesh.vertex_color[3 * i + 2],
+            ];
         }
+        let uvs: [f32; 2] = [model.mesh.texcoords[i], model.mesh.texcoords[i + 1]];
+
+        if swap_yz {
+            pos = [pos[0], pos[2], pos[1]];
+            color = [color[0], color[2], color[1]];
+        }
+
+        vertex_vec.push(Vertex {
+            _pos: [pos[0], pos[1], pos[2], 1.0],
+            _color: color,
+            _uv: uvs,
+        });
     }
 
     return vertex_vec;

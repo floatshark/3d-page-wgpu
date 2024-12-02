@@ -15,7 +15,7 @@ impl UpdateContext {
     pub fn get_init() -> UpdateContext {
         UpdateContext {
             eye_location: glam::Vec3 {
-                x: 3.0,
+                x: 5.0,
                 y: 0.0,
                 z: 0.5,
             },
