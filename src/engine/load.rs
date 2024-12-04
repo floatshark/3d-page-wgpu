@@ -1,3 +1,5 @@
+use crate::rendering;
+
 pub fn format_url(file_name: &str) -> reqwest::Url {
     let window = web_sys::window().unwrap();
     let location = window.location();
@@ -48,12 +50,7 @@ pub async fn _load_binary(file_name: &str) -> anyhow::Result<Vec<u8>> {
     Ok(data)
 }
 
-pub async fn load_mdl_async(
-    file_name: &str,
-) -> anyhow::Result<(
-    Vec<tobj::Model>,
-    Result<Vec<tobj::Material>, tobj::LoadError>,
-)> {
+pub async fn load_obj_async(file_name: &str) -> rendering::common::Mesh {
     let obj_text = load_string(file_name)
         .await
         .expect("Failed to parse object name string");
@@ -66,11 +63,25 @@ pub async fn load_mdl_async(
         ..Default::default()
     };
 
-    let output = tobj::load_obj_buf_async(&mut obj_reader, &load_options, |p| async move {
+    let loaded_obj = tobj::load_obj_buf_async(&mut obj_reader, &load_options, |p| async move {
         let mat_text = load_string(&p).await.unwrap();
         tobj::load_mtl_buf(&mut std::io::BufReader::new(std::io::Cursor::new(mat_text)))
     })
-    .await?;
+    .await
+    .expect("Failed to load obj");
 
-    return Ok(output);
+    let model: &tobj::Model = loaded_obj.0.first().expect("Failed to get first model");
+
+    log::debug!(
+        "loaded {} : vertices {}, indices {}",
+        file_name,
+        model.mesh.positions.len() / 3,
+        model.mesh.indices.len()
+    );
+
+    rendering::common::Mesh {
+        _name: model.name.clone(),
+        vertices: rendering::common::create_vertices_from_obj(&model, true),
+        indices: rendering::common::create_indices_from_obj(&model, true),
+    }
 }

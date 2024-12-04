@@ -14,7 +14,7 @@ pub async fn main() {
 
     log::debug!("Main");
 
-    // -------------------------------------------------------------------------
+    // Js  ----------------------------------------------------------------------
 
     let mouse_event_js: std::rc::Rc<std::cell::Cell<frontend::controls::MouseEventResponseJs>> =
         std::rc::Rc::new(std::cell::Cell::new(
@@ -22,43 +22,36 @@ pub async fn main() {
         ));
     frontend::controls::add_event_listener_control(&mouse_event_js);
 
-    // Model loading -----------------------------------------------------------
+    // Model loading  ----------------------------------------------------------
     // TODO: Multithread load, single is too slow
 
-    /*let obj_loaded: (
-        Vec<tobj::Model>,
-        Result<Vec<tobj::Material>, tobj::LoadError>,
-    ) = engine::load::load_mdl_async(engine::define::OBJ_BUNNY_PATH)
-        .await
-        .expect("Failed to load .mdl file");
-        */
-    // -------------------------------------------------------------------------
-
-    let update_context: std::rc::Rc<std::cell::Cell<engine::update::UpdateContext>> =
-        std::rc::Rc::new(std::cell::Cell::new(
-            engine::update::UpdateContext::get_init(),
-        ));
-    let update_context_clone: std::rc::Rc<std::cell::Cell<engine::update::UpdateContext>> =
-        update_context.clone();
+    //let cube_mesh: rendering::common::Mesh = rendering::common::create_cube();
+    let obj_mesh = engine::load::load_obj_async(engine::define::OBJ_TEAPOT_PATH).await;
 
     // Rendering  ---------------------------------------------------------------
 
     let webgpu_interface: rendering::webgpu::WebGPUInterface =
         rendering::webgpu::init_webgpu().await;
-    let webgpu_resource = rendering::webgpu::init_webgpu_color_shader(&webgpu_interface);
-    
-    // Game loop ----------------------------------------------------------------
+    let webgpu_resource = rendering::webgpu::init_webgpu_phong_shader(&webgpu_interface, &obj_mesh);
+
+    // Update variables  --------------------------------------------------------
+
+    let scene: std::rc::Rc<std::cell::Cell<engine::update::Scene>> =
+        std::rc::Rc::new(std::cell::Cell::new(engine::update::Scene::get_init()));
+    let scene_clone: std::rc::Rc<std::cell::Cell<engine::update::Scene>> = scene.clone();
+
+    // Game loop  ---------------------------------------------------------------
 
     let f: std::rc::Rc<_> = std::rc::Rc::new(std::cell::RefCell::new(None));
     let g: std::rc::Rc<std::cell::RefCell<Option<_>>> = f.clone();
     *g.borrow_mut() = Some(wasm_bindgen::closure::Closure::wrap(Box::new(move || {
-        engine::update::update_js(&mouse_event_js, &update_context_clone);
-        engine::update::update_render_resource(
-            &update_context_clone,
+        engine::update::update_js(&scene_clone, &mouse_event_js);
+
+        rendering::webgpu::write_webgpu_phong_buffer(
+            &scene_clone,
             &webgpu_interface,
             &webgpu_resource,
         );
-
         rendering::webgpu::render_main(&webgpu_interface, &webgpu_resource);
 
         request_animation_frame(f.borrow().as_ref().unwrap());

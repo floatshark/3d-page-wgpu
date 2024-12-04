@@ -1,4 +1,4 @@
-use crate::engine::define;
+use crate::engine::{self, define};
 use crate::rendering::common;
 
 use wasm_bindgen::JsCast;
@@ -15,12 +15,12 @@ pub struct WebGPUInterface<'a> {
 }
 
 pub struct WebGPURenderResource {
-    pub shader: wgpu::ShaderModule,
+    pub _shader: wgpu::ShaderModule,
     pub vertex_buf: wgpu::Buffer,
     pub index_buf: wgpu::Buffer,
     pub index_count: u32,
     pub bind_group: wgpu::BindGroup,
-    pub bind_group_layout: wgpu::BindGroupLayout,
+    pub _bind_group_layout: wgpu::BindGroupLayout,
     pub uniform_buf: wgpu::Buffer,
     pub render_pipeline: wgpu::RenderPipeline,
 }
@@ -113,30 +113,24 @@ pub async fn init_webgpu<'a>() -> WebGPUInterface<'a> {
 }
 
 // --------------------------------------------------------------------------------
-
-pub fn init_webgpu_color_shader(interface: &WebGPUInterface) -> WebGPURenderResource {
-    let canvas: web_sys::Element = gloo::utils::document()
-        .get_element_by_id(define::CANVAS_ELEMENT_ID)
-        .expect("Failed to get canvas element");
-    let canvas: web_sys::HtmlCanvasElement = canvas
-        .dyn_into()
-        .expect("Failed to dynamic cast canvas element");
-
-    let width: u32 = canvas.client_width() as u32;
-    let height: u32 = canvas.client_height() as u32;
-
+#[allow(dead_code)]
+pub fn init_webgpu_color_shader(
+    interface: &WebGPUInterface,
+    mesh: &common::Mesh,
+) -> WebGPURenderResource {
     let shader: wgpu::ShaderModule =
         interface
             .device
             .create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: None,
                 source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(include_str!(
-                    "../shader/color.wgsl" // TODO: Convert to constant variable
+                    "../shader/color.wgsl"
                 ))),
             });
 
     let vertex_size: usize = std::mem::size_of::<common::Vertex>();
-    let (vertex_data, index_data) = common::create_cube();
+    let vertex_data: &Vec<common::Vertex> = &mesh.vertices;
+    let index_data: &Vec<u32> = &mesh.indices;
 
     let vertex_buf: wgpu::Buffer =
         interface
@@ -158,16 +152,13 @@ pub fn init_webgpu_color_shader(interface: &WebGPUInterface) -> WebGPURenderReso
 
     // bindings
 
-    let mvp_total = common::create_mvp(width as f32 / height as f32);
-    let mvp_ref: &[f32; 16] = mvp_total.as_ref();
-    let uniform_buf: wgpu::Buffer =
-        interface
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Uniform Buffer"),
-                contents: bytemuck::cast_slice(mvp_ref),
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            });
+    let uniform_size: u64 = 4 * (16);
+    let uniform_buf: wgpu::Buffer = interface.device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("Uniform Buffer"),
+        size: uniform_size,
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
 
     let bind_group_layout: wgpu::BindGroupLayout =
         interface
@@ -264,17 +255,238 @@ pub fn init_webgpu_color_shader(interface: &WebGPUInterface) -> WebGPURenderReso
     let index_count: u32 = index_data.len() as u32;
 
     let render_resource: WebGPURenderResource = WebGPURenderResource {
-        shader,
+        _shader: shader,
         vertex_buf,
         index_buf,
         index_count,
         bind_group,
-        bind_group_layout,
+        _bind_group_layout: bind_group_layout,
         uniform_buf,
         render_pipeline,
     };
 
     return render_resource;
+}
+
+#[allow(dead_code)]
+pub fn init_webgpu_phong_shader(
+    interface: &WebGPUInterface,
+    mesh: &common::Mesh,
+) -> WebGPURenderResource {
+    let shader: wgpu::ShaderModule =
+        interface
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: None,
+                source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(include_str!(
+                    "../shader/phong.wgsl"
+                ))),
+            });
+
+    let vertex_size: usize = std::mem::size_of::<common::Vertex>();
+    let vertex_data: &Vec<common::Vertex> = &mesh.vertices;
+    let index_data: &Vec<u32> = &mesh.indices;
+
+    let vertex_buf: wgpu::Buffer =
+        interface
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Vertex Buffer"),
+                contents: bytemuck::cast_slice(&vertex_data),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+
+    let index_buf: wgpu::Buffer =
+        interface
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Index Buffer"),
+                contents: bytemuck::cast_slice(&index_data),
+                usage: wgpu::BufferUsages::INDEX,
+            });
+
+    // transform matrix + (directional light + padding) + ambient light
+    let uniform_size: u64 = 4 * (16 + (3 + 1) + 4);
+    let uniform_buf: wgpu::Buffer = interface.device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("Uniform Buffer"),
+        size: uniform_size,
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+
+    let bind_group_layout: wgpu::BindGroupLayout =
+        interface
+            .device
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: None,
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: wgpu::BufferSize::new(uniform_size),
+                    },
+                    count: None,
+                }],
+            });
+
+    let bind_group: wgpu::BindGroup =
+        interface
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &bind_group_layout,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: uniform_buf.as_entire_binding(),
+                }],
+                label: Some("Bind group 0"),
+            });
+
+    // pipeline
+
+    let pipeline_layout: wgpu::PipelineLayout =
+        interface
+            .device
+            .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: None,
+                bind_group_layouts: &[&bind_group_layout],
+                push_constant_ranges: &[],
+            });
+
+    let vertex_buffers: [wgpu::VertexBufferLayout<'_>; 1] = [wgpu::VertexBufferLayout {
+        array_stride: vertex_size as wgpu::BufferAddress,
+        step_mode: wgpu::VertexStepMode::Vertex,
+        attributes: &[
+            wgpu::VertexAttribute {
+                format: wgpu::VertexFormat::Float32x4,
+                offset: 0,
+                shader_location: 0,
+            },
+            wgpu::VertexAttribute {
+                format: wgpu::VertexFormat::Float32x3,
+                offset: std::mem::size_of::<[f32; 9]>() as u64,
+                shader_location: 1,
+            },
+        ],
+    }];
+
+    let render_pipeline: wgpu::RenderPipeline =
+        interface
+            .device
+            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: None,
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some(define::VS_ENTRY_POINT),
+                    compilation_options: Default::default(),
+                    buffers: &vertex_buffers,
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some(define::FS_ENTRY_POINT),
+                    compilation_options: Default::default(),
+                    targets: &[Some(interface.swapchain_format.into())],
+                }),
+                primitive: wgpu::PrimitiveState {
+                    front_face: wgpu::FrontFace::Ccw,
+                    cull_mode: Some(wgpu::Face::Back),
+                    ..Default::default()
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: wgpu::TextureFormat::Depth24Plus,
+                    depth_write_enabled: true,
+                    depth_compare: wgpu::CompareFunction::LessEqual,
+                    stencil: wgpu::StencilState::default(),
+                    bias: wgpu::DepthBiasState::default(),
+                }),
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
+                cache: None,
+            });
+
+    let index_count: u32 = index_data.len() as u32;
+
+    let render_resource: WebGPURenderResource = WebGPURenderResource {
+        _shader: shader,
+        vertex_buf,
+        index_buf,
+        index_count,
+        bind_group,
+        _bind_group_layout: bind_group_layout,
+        uniform_buf,
+        render_pipeline,
+    };
+
+    return render_resource;
+}
+
+// --------------------------------------------------------------------------------
+
+#[allow(dead_code)]
+pub fn write_webgpu_color_buffer(
+    scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>>,
+    interface: &WebGPUInterface,
+    resource: &WebGPURenderResource,
+) {
+    let canvas: web_sys::Element = gloo::utils::document()
+        .get_element_by_id(define::CANVAS_ELEMENT_ID)
+        .unwrap();
+    let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into().unwrap();
+    let width: u32 = canvas.client_width() as u32;
+    let height: u32 = canvas.client_height() as u32;
+    let aspect_ratio: f32 = width as f32 / height as f32;
+
+    let eye: glam::Vec3 = scene.get().eye_location;
+    let direction: glam::Vec3 = scene.get().eye_direction;
+
+    // Create matrices and write buffer
+    let view_matrix = glam::Mat4::look_to_rh(eye, direction, glam::Vec3::Z);
+    let projection_matrix: glam::Mat4 =
+        glam::Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, aspect_ratio, 0.0, 10.0);
+    let mx_total: glam::Mat4 = projection_matrix * view_matrix;
+    let mx_ref: &[f32; 16] = mx_total.as_ref();
+    interface
+        .queue
+        .write_buffer(&resource.uniform_buf, 0, bytemuck::cast_slice(mx_ref));
+}
+
+#[allow(dead_code)]
+pub fn write_webgpu_phong_buffer(
+    scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>>,
+    interface: &WebGPUInterface,
+    resource: &WebGPURenderResource,
+) {
+    let canvas: web_sys::Element = gloo::utils::document()
+        .get_element_by_id(define::CANVAS_ELEMENT_ID)
+        .unwrap();
+    let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into().unwrap();
+    let width: u32 = canvas.client_width() as u32;
+    let height: u32 = canvas.client_height() as u32;
+    let aspect_ratio: f32 = width as f32 / height as f32;
+
+    let eye: glam::Vec3 = scene.get().eye_location;
+    let direction: glam::Vec3 = scene.get().eye_direction;
+
+    // Create matrices and write buffer
+    let view_matrix = glam::Mat4::look_to_rh(eye, direction, glam::Vec3::Z);
+    let projection_matrix: glam::Mat4 =
+        glam::Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, aspect_ratio, 0.0, 10.0);
+    let transform_matrix: glam::Mat4 = projection_matrix * view_matrix;
+
+    let directional: [f32; 3] = scene.get().directional_light_angle;
+    let ambient: [f32; 4] = scene.get().ambient_light_color;
+
+    let mut uniform_total: Vec<f32> = transform_matrix.to_cols_array().to_vec();
+    uniform_total.extend_from_slice(&directional);
+    uniform_total.extend_from_slice(&[0.0]); // Padding!
+    uniform_total.extend_from_slice(&ambient);
+
+    let uniform_ref: &[f32] = uniform_total.as_ref();
+    interface
+        .queue
+        .write_buffer(&resource.uniform_buf, 0, bytemuck::cast_slice(uniform_ref));
 }
 
 // --------------------------------------------------------------------------------

@@ -1,25 +1,25 @@
-use crate::engine::define;
 use crate::frontend;
-use crate::rendering;
 
 use glam::Vec4Swizzles;
-use wasm_bindgen::JsCast;
 
 #[derive(Clone, Copy, Default)]
-pub struct UpdateContext {
+pub struct Scene {
     pub eye_location: glam::Vec3,
     pub eye_direction: glam::Vec3,
+    pub directional_light_angle: [f32; 3],
+    pub ambient_light_color: [f32; 4],
 }
-
-impl UpdateContext {
-    pub fn get_init() -> UpdateContext {
-        UpdateContext {
+impl Scene {
+    pub fn get_init() -> Scene {
+        Scene {
             eye_location: glam::Vec3 {
                 x: 5.0,
                 y: 0.0,
                 z: 0.5,
             },
             eye_direction: -glam::Vec3::X,
+            directional_light_angle: [-1.0, -0.5, -2.0],
+            ambient_light_color: [0.2, 0.2, 0.2, 1.0],
         }
     }
 }
@@ -27,11 +27,11 @@ impl UpdateContext {
 // ---------------------------------------------------------------------------------------
 
 pub fn update_js(
+    scene: &std::rc::Rc<std::cell::Cell<Scene>>,
     mouse_event_js: &std::rc::Rc<std::cell::Cell<frontend::controls::MouseEventResponseJs>>,
-    context: &std::rc::Rc<std::cell::Cell<UpdateContext>>,
 ) {
-    let mut eye: glam::Vec3 = context.get().eye_location;
-    let mut direction: glam::Vec3 = context.get().eye_direction;
+    let mut eye: glam::Vec3 = scene.get().eye_location;
+    let mut direction: glam::Vec3 = scene.get().eye_direction;
 
     // Calculate eye direction (rotation)
     let on_click: bool = mouse_event_js.get().on_click;
@@ -64,41 +64,14 @@ pub fn update_js(
     }
 
     // Update
-    let view_temp: UpdateContext = UpdateContext {
-        eye_location: eye,
-        eye_direction: direction,
-    };
-    context.set(view_temp);
+    let mut scene_updated: Scene = scene.get();
+    scene_updated.eye_location = eye;
+    scene_updated.eye_direction = direction;
+    scene.set(scene_updated);
 
+    // Event context override
     let mut override_event: frontend::controls::MouseEventResponseJs = mouse_event_js.get();
     override_event.on_click = false;
     override_event.on_wheel = false;
     mouse_event_js.set(override_event);
-}
-
-pub fn update_render_resource(
-    context: &std::rc::Rc<std::cell::Cell<UpdateContext>>,
-    interface: &rendering::webgpu::WebGPUInterface,
-    resource: &rendering::webgpu::WebGPURenderResource,
-) {
-    let canvas: web_sys::Element = gloo::utils::document()
-        .get_element_by_id(define::CANVAS_ELEMENT_ID)
-        .unwrap();
-    let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into().unwrap();
-    let width: u32 = canvas.client_width() as u32;
-    let height: u32 = canvas.client_height() as u32;
-    let aspect_ratio: f32 = width as f32 / height as f32;
-
-    let eye: glam::Vec3 = context.get().eye_location;
-    let direction: glam::Vec3 = context.get().eye_direction;
-
-    // Create matrices and write buffer
-    let view_matrix = glam::Mat4::look_to_rh(eye, direction, glam::Vec3::Z);
-    let projection_matrix: glam::Mat4 =
-        glam::Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, aspect_ratio, 0.0, 10.0);
-    let mx_total: glam::Mat4 = projection_matrix * view_matrix;
-    let mx_ref: &[f32; 16] = mx_total.as_ref();
-    interface
-        .queue
-        .write_buffer(&resource.uniform_buf, 0, bytemuck::cast_slice(mx_ref));
 }
