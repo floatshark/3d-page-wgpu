@@ -217,7 +217,10 @@ pub fn create_vertices_from_obj(model: &tobj::Model, swap_yz: bool) -> Vec<Verte
                 model.mesh.vertex_color[3 * i + 2],
             ];
         }
-        let uvs: [f32; 2] = [model.mesh.texcoords[i], model.mesh.texcoords[i + 1]];
+        let mut uvs: [f32; 2] = [0.0, 0.0];
+        if model.mesh.texcoords.len() > i * 2 {
+            uvs = [model.mesh.texcoords[2 * i], model.mesh.texcoords[2 * i + 1]];
+        }
         let mut normal: [f32; 3] = [0.0, 0.0, 0.0];
         if model.mesh.normals.len() > i * 3 {
             normal = [

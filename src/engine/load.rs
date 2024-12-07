@@ -50,7 +50,10 @@ pub async fn _load_binary(file_name: &str) -> anyhow::Result<Vec<u8>> {
     Ok(data)
 }
 
-pub async fn load_obj_async(file_name: &str) -> rendering::common::Mesh {
+// -----------------------------------------------------------------------------
+
+#[allow(dead_code)]
+pub async fn load_obj_single(file_name: &str) -> rendering::common::Mesh {
     let obj_text = load_string(file_name)
         .await
         .expect("Failed to parse object name string");
@@ -84,4 +87,46 @@ pub async fn load_obj_async(file_name: &str) -> rendering::common::Mesh {
         vertices: rendering::common::create_vertices_from_obj(&model, true),
         indices: rendering::common::create_indices_from_obj(&model, true),
     }
+}
+
+#[allow(dead_code)]
+pub async fn load_obj(file_name: &str) -> Vec<rendering::common::Mesh> {
+    let obj_text = load_string(file_name)
+        .await
+        .expect("Failed to parse object name string");
+    let obj_cursor: std::io::Cursor<String> = std::io::Cursor::new(obj_text);
+    let mut obj_reader: std::io::BufReader<_> = std::io::BufReader::new(obj_cursor);
+
+    let load_options = tobj::LoadOptions {
+        triangulate: true,
+        single_index: true,
+        ..Default::default()
+    };
+
+    let loaded_obj = tobj::load_obj_buf_async(&mut obj_reader, &load_options, |p| async move {
+        let mat_text = load_string(&p).await.unwrap();
+        tobj::load_mtl_buf(&mut std::io::BufReader::new(std::io::Cursor::new(mat_text)))
+    })
+    .await
+    .expect("Failed to load obj");
+
+    let models: Vec<tobj::Model> = loaded_obj.0;
+    let mut out: Vec<rendering::common::Mesh> = Vec::new();
+
+    for model in models.iter() {
+        log::debug!(
+            "loaded {} : vertices {}, indices {}",
+            file_name,
+            model.mesh.positions.len() / 3,
+            model.mesh.indices.len()
+        );
+
+        out.push(rendering::common::Mesh {
+            _name: model.name.clone(),
+            vertices: rendering::common::create_vertices_from_obj(&model, true),
+            indices: rendering::common::create_indices_from_obj(&model, true),
+        });
+    }
+
+    return out;
 }

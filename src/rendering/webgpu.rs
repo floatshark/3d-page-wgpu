@@ -4,7 +4,8 @@ use crate::rendering::common;
 use wasm_bindgen::JsCast;
 use wgpu::util::DeviceExt;
 
-pub const WGPU_DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24Plus;
+const WGPU_DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24Plus;
+const WGPU_CULL_FACE: wgpu::Face = wgpu::Face::Back;
 
 pub struct WebGPUInterface<'a> {
     pub surface: wgpu::Surface<'a>,
@@ -95,8 +96,8 @@ pub async fn init_webgpu<'a>() -> WebGPUInterface<'a> {
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
         format: WGPU_DEPTH_FORMAT,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-        view_formats: &[],
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+        view_formats: &[WGPU_DEPTH_FORMAT],
     });
 
     // Return webgpu resource
@@ -237,7 +238,7 @@ pub fn init_webgpu_color_shader(
                 }),
                 primitive: wgpu::PrimitiveState {
                     front_face: wgpu::FrontFace::Ccw,
-                    cull_mode: Some(wgpu::Face::Back),
+                    cull_mode: Some(WGPU_CULL_FACE),
                     ..Default::default()
                 },
                 depth_stencil: Some(wgpu::DepthStencilState {
@@ -391,11 +392,11 @@ pub fn init_webgpu_phong_shader(
                 }),
                 primitive: wgpu::PrimitiveState {
                     front_face: wgpu::FrontFace::Ccw,
-                    cull_mode: Some(wgpu::Face::Back),
+                    cull_mode: Some(WGPU_CULL_FACE),
                     ..Default::default()
                 },
                 depth_stencil: Some(wgpu::DepthStencilState {
-                    format: wgpu::TextureFormat::Depth24Plus,
+                    format: WGPU_DEPTH_FORMAT,
                     depth_write_enabled: true,
                     depth_compare: wgpu::CompareFunction::LessEqual,
                     stencil: wgpu::StencilState::default(),
@@ -491,7 +492,7 @@ pub fn write_webgpu_phong_buffer(
 
 // --------------------------------------------------------------------------------
 
-pub fn render_main(interface: &WebGPUInterface, resource: &WebGPURenderResource) {
+pub fn render_main(interface: &WebGPUInterface, resources: &Vec<WebGPURenderResource>) {
     let frame: wgpu::SurfaceTexture = interface
         .surface
         .get_current_texture()
@@ -506,7 +507,7 @@ pub fn render_main(interface: &WebGPUInterface, resource: &WebGPURenderResource)
             .depth_texture
             .create_view(&wgpu::TextureViewDescriptor {
                 label: Some("depth texture view"),
-                format: Some(wgpu::TextureFormat::Depth24Plus),
+                format: Some(WGPU_DEPTH_FORMAT),
                 aspect: wgpu::TextureAspect::DepthOnly,
                 base_array_layer: 0,
                 array_layer_count: Some(1),
@@ -548,14 +549,13 @@ pub fn render_main(interface: &WebGPUInterface, resource: &WebGPURenderResource)
                 occlusion_query_set: None,
             });
 
-        rpass.push_debug_group("Prepare data for draw.");
-        rpass.set_pipeline(&resource.render_pipeline);
-        rpass.set_bind_group(0, &resource.bind_group, &[]);
-        rpass.set_index_buffer(resource.index_buf.slice(..), wgpu::IndexFormat::Uint32);
-        rpass.set_vertex_buffer(0, resource.vertex_buf.slice(..));
-        rpass.pop_debug_group();
-        rpass.insert_debug_marker("Draw!");
-        rpass.draw_indexed(0..resource.index_count as u32, 0, 0..1);
+        for resource in resources {
+            rpass.set_pipeline(&resource.render_pipeline);
+            rpass.set_bind_group(0, &resource.bind_group, &[]);
+            rpass.set_index_buffer(resource.index_buf.slice(..), wgpu::IndexFormat::Uint32);
+            rpass.set_vertex_buffer(0, resource.vertex_buf.slice(..));
+            rpass.draw_indexed(0..resource.index_count, 0, 0..1);
+        }
     }
 
     interface.queue.submit(Some(encoder.finish()));

@@ -2,6 +2,7 @@ mod engine;
 mod frontend;
 mod rendering;
 
+use engine::define::{OBJ_MORI_KNOB_PATH, OBJ_SPHERE_PATH};
 use wasm_bindgen::JsCast;
 
 #[global_allocator]
@@ -23,16 +24,22 @@ pub async fn main() {
     frontend::controls::add_event_listener_control(&mouse_event_js);
 
     // Model loading  ----------------------------------------------------------
-    // TODO: Multithread load, single is too slow
 
-    //let cube_mesh: rendering::common::Mesh = rendering::common::create_cube();
-    let obj_mesh = engine::load::load_obj_async(engine::define::OBJ_TEAPOT_PATH).await;
+    // TODO: Multithread load
+    let obj_meshes: Vec<rendering::common::Mesh> =
+        engine::load::load_obj(engine::define::OBJ_MORI_KNOB_PATH).await;
 
     // Rendering  ---------------------------------------------------------------
 
     let webgpu_interface: rendering::webgpu::WebGPUInterface =
         rendering::webgpu::init_webgpu().await;
-    let webgpu_resource = rendering::webgpu::init_webgpu_phong_shader(&webgpu_interface, &obj_mesh);
+
+    let mut webgpu_resources: Vec<rendering::webgpu::WebGPURenderResource> = Vec::new();
+    for obj_mesh in obj_meshes.iter() {
+        let webgpu_resource =
+            rendering::webgpu::init_webgpu_phong_shader(&webgpu_interface, &obj_mesh);
+        webgpu_resources.push(webgpu_resource);
+    }
 
     // Update variables  --------------------------------------------------------
 
@@ -47,12 +54,14 @@ pub async fn main() {
     *g.borrow_mut() = Some(wasm_bindgen::closure::Closure::wrap(Box::new(move || {
         engine::update::update_js(&scene_clone, &mouse_event_js);
 
-        rendering::webgpu::write_webgpu_phong_buffer(
-            &scene_clone,
-            &webgpu_interface,
-            &webgpu_resource,
-        );
-        rendering::webgpu::render_main(&webgpu_interface, &webgpu_resource);
+        for webgpu_resource in webgpu_resources.iter() {
+            rendering::webgpu::write_webgpu_phong_buffer(
+                &scene_clone,
+                &webgpu_interface,
+                &webgpu_resource,
+            );
+        }
+        rendering::webgpu::render_main(&webgpu_interface, &webgpu_resources);
 
         request_animation_frame(f.borrow().as_ref().unwrap());
     })
