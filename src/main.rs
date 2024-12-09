@@ -2,7 +2,6 @@ mod engine;
 mod frontend;
 mod rendering;
 
-use engine::define::{OBJ_MORI_KNOB_PATH, OBJ_SPHERE_PATH};
 use wasm_bindgen::JsCast;
 
 #[global_allocator]

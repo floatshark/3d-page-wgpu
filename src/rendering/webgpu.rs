@@ -4,8 +4,9 @@ use crate::rendering::common;
 use wasm_bindgen::JsCast;
 use wgpu::util::DeviceExt;
 
-const WGPU_DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24Plus;
-const WGPU_CULL_FACE: wgpu::Face = wgpu::Face::Back;
+const WEBGPU_DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24PlusStencil8;
+const WEBGPU_FRONT_FACE: wgpu::FrontFace = wgpu::FrontFace::Ccw;
+const WEBGPU_CULL_MODE: wgpu::Face = wgpu::Face::Back;
 
 pub struct WebGPUInterface<'a> {
     pub surface: wgpu::Surface<'a>,
@@ -95,9 +96,9 @@ pub async fn init_webgpu<'a>() -> WebGPUInterface<'a> {
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
-        format: WGPU_DEPTH_FORMAT,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-        view_formats: &[WGPU_DEPTH_FORMAT],
+        format: WEBGPU_DEPTH_FORMAT,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        view_formats: &[],
     });
 
     // Return webgpu resource
@@ -238,7 +239,7 @@ pub fn init_webgpu_color_shader(
                 }),
                 primitive: wgpu::PrimitiveState {
                     front_face: wgpu::FrontFace::Ccw,
-                    cull_mode: Some(WGPU_CULL_FACE),
+                    cull_mode: Some(WEBGPU_CULL_MODE),
                     ..Default::default()
                 },
                 depth_stencil: Some(wgpu::DepthStencilState {
@@ -391,12 +392,12 @@ pub fn init_webgpu_phong_shader(
                     targets: &[Some(interface.swapchain_format.into())],
                 }),
                 primitive: wgpu::PrimitiveState {
-                    front_face: wgpu::FrontFace::Ccw,
-                    cull_mode: Some(WGPU_CULL_FACE),
+                    front_face: WEBGPU_FRONT_FACE,
+                    cull_mode: Some(WEBGPU_CULL_MODE),
                     ..Default::default()
                 },
                 depth_stencil: Some(wgpu::DepthStencilState {
-                    format: WGPU_DEPTH_FORMAT,
+                    format: WEBGPU_DEPTH_FORMAT,
                     depth_write_enabled: true,
                     depth_compare: wgpu::CompareFunction::LessEqual,
                     stencil: wgpu::StencilState::default(),
@@ -445,7 +446,7 @@ pub fn write_webgpu_color_buffer(
     // Create matrices and write buffer
     let view_matrix = glam::Mat4::look_to_rh(eye, direction, glam::Vec3::Z);
     let projection_matrix: glam::Mat4 =
-        glam::Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, aspect_ratio, 0.0, 10.0);
+        glam::Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, aspect_ratio, 0.01, 100.0);
     let mx_total: glam::Mat4 = projection_matrix * view_matrix;
     let mx_ref: &[f32; 16] = mx_total.as_ref();
     interface
@@ -473,7 +474,7 @@ pub fn write_webgpu_phong_buffer(
     // Create matrices and write buffer
     let view_matrix = glam::Mat4::look_to_rh(eye, direction, glam::Vec3::Z);
     let projection_matrix: glam::Mat4 =
-        glam::Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, aspect_ratio, 0.0, 10.0);
+        glam::Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, aspect_ratio, 0.01, 100.0);
     let transform_matrix: glam::Mat4 = projection_matrix * view_matrix;
 
     let directional: [f32; 3] = scene.get().directional_light_angle;
@@ -507,8 +508,8 @@ pub fn render_main(interface: &WebGPUInterface, resources: &Vec<WebGPURenderReso
             .depth_texture
             .create_view(&wgpu::TextureViewDescriptor {
                 label: Some("depth texture view"),
-                format: Some(WGPU_DEPTH_FORMAT),
-                aspect: wgpu::TextureAspect::DepthOnly,
+                format: Some(WEBGPU_DEPTH_FORMAT),
+                aspect: wgpu::TextureAspect::All,
                 base_array_layer: 0,
                 array_layer_count: Some(1),
                 base_mip_level: 0,
@@ -543,7 +544,10 @@ pub fn render_main(interface: &WebGPUInterface, resources: &Vec<WebGPURenderReso
                         load: wgpu::LoadOp::Clear(1.0),
                         store: wgpu::StoreOp::Store,
                     }),
-                    stencil_ops: None,
+                    stencil_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(0),
+                        store: wgpu::StoreOp::Store,
+                    }),
                 }),
                 timestamp_writes: None,
                 occlusion_query_set: None,
