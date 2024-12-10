@@ -275,6 +275,14 @@ pub fn init_webgpu_phong_shader(
     interface: &WebGPUInterface,
     mesh: &common::Mesh,
 ) -> WebGPURenderResource {
+
+    struct PhongUniform{
+        transform_matrix: [f32; 16],
+        directional_light: [f32; 4],
+        ambient_light: [f32; 4],
+        inverse_matrix: [f32; 16],
+    }
+
     let shader: wgpu::ShaderModule =
         interface
             .device
@@ -307,8 +315,7 @@ pub fn init_webgpu_phong_shader(
                 usage: wgpu::BufferUsages::INDEX,
             });
 
-    // transform matrix + (directional light + padding) + ambient light
-    let uniform_size: u64 = 4 * (16 + (3 + 1) + 4);
+    let uniform_size: u64 = std::mem::size_of::<PhongUniform>() as u64;
     let uniform_buf: wgpu::Buffer = interface.device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("Uniform Buffer"),
         size: uniform_size,
@@ -479,11 +486,13 @@ pub fn write_webgpu_phong_buffer(
 
     let directional: [f32; 3] = scene.get().directional_light_angle;
     let ambient: [f32; 4] = scene.get().ambient_light_color;
+    let inverse_projection: glam::Mat4 = transform_matrix.inverse();
 
     let mut uniform_total: Vec<f32> = transform_matrix.to_cols_array().to_vec();
     uniform_total.extend_from_slice(&directional);
     uniform_total.extend_from_slice(&[0.0]); // Padding!
     uniform_total.extend_from_slice(&ambient);
+    uniform_total.extend_from_slice(&inverse_projection.to_cols_array().to_vec());
 
     let uniform_ref: &[f32] = uniform_total.as_ref();
     interface

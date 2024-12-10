@@ -26,7 +26,7 @@ pub async fn main() {
 
     // TODO: Multithread load
     let obj_meshes: Vec<rendering::common::Mesh> =
-        engine::load::load_obj(engine::define::OBJ_MORI_KNOB_PATH).await;
+        engine::load::load_obj(engine::define::OBJ_BUNNY_PATH).await;
 
     // Rendering  ---------------------------------------------------------------
 

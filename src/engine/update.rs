@@ -18,7 +18,7 @@ impl Scene {
                 z: 0.5,
             },
             eye_direction: -glam::Vec3::X,
-            directional_light_angle: [-1.0, -0.5, -2.0],
+            directional_light_angle: [0.0, 0.0, -1.0],
             ambient_light_color: [0.2, 0.2, 0.2, 1.0],
         }
     }
