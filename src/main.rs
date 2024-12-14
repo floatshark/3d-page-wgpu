@@ -72,12 +72,14 @@ pub async fn main() {
         rendering::webgpu::render_main(&webgpu_interface, &webgpu_resources);*/
 
         for gbuffer_resource in gbuffer_resources.iter() {
-            rendering::webgpu::write_differed_gbuffers_shader(
+            rendering::webgpu::upadte_differed_gbuffers_uniform(
                 &scene_clone,
                 &webgpu_interface,
                 &gbuffer_resource,
             );
         }
+        rendering::webgpu::update_differed_uniform(&scene_clone, &webgpu_interface, &differed_resource);
+        
         rendering::webgpu::render_differed_main(
             &webgpu_interface,
             &gbuffers,

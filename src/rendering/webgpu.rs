@@ -36,7 +36,7 @@ pub struct WebGPUDifferedGBuffer {
 pub struct WebGPUDifferedResource {
     pub _shader: wgpu::ShaderModule,
     pub bind_groups: Vec<wgpu::BindGroup>,
-    pub _uniform_buf: wgpu::Buffer,
+    pub uniform_buf: wgpu::Buffer,
     pub render_pipeline: wgpu::RenderPipeline,
 }
 
@@ -283,7 +283,7 @@ pub fn init_differed_gbuffers_shader(
             },
             wgpu::VertexAttribute {
                 format: wgpu::VertexFormat::Float32x3,
-                offset: (std::mem::size_of::<[f32; 4]>()) as wgpu::BufferAddress,
+                offset: std::mem::size_of::<[f32; 9]>() as u64,
                 shader_location: 1,
             },
         ],
@@ -352,7 +352,7 @@ pub fn init_differed_gbuffers_shader(
 }
 
 #[allow(dead_code)]
-pub fn write_differed_gbuffers_shader(
+pub fn upadte_differed_gbuffers_uniform(
     scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>>,
     interface: &WebGPUInterface,
     resource: &WebGPURenderResource,
@@ -478,7 +478,7 @@ pub fn init_differed_shading(
     let uniform_buf: wgpu::Buffer = interface.device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("Differed uniform buffer"),
         size: uniform_size,
-        usage: wgpu::BufferUsages::UNIFORM,
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,
     });
 
@@ -557,11 +557,50 @@ pub fn init_differed_shading(
     let resource: WebGPUDifferedResource = WebGPUDifferedResource {
         _shader: shader,
         bind_groups,
-        _uniform_buf: uniform_buf,
+        uniform_buf,
         render_pipeline,
     };
 
     return resource;
+}
+
+#[allow(dead_code)]
+pub fn update_differed_uniform(
+    scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>>,
+    interface: &WebGPUInterface,
+    resource: &WebGPUDifferedResource,
+) {
+    let canvas: web_sys::Element = gloo::utils::document()
+        .get_element_by_id(define::CANVAS_ELEMENT_ID)
+        .unwrap();
+    let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into().unwrap();
+    let width: u32 = canvas.client_width() as u32;
+    let height: u32 = canvas.client_height() as u32;
+    let aspect_ratio: f32 = width as f32 / height as f32;
+
+    let eye: glam::Vec3 = scene.get().eye_location;
+    let direction: glam::Vec3 = scene.get().eye_direction;
+
+    // Create matrices and write buffer
+    let view_matrix = glam::Mat4::look_to_rh(eye, direction, glam::Vec3::Z);
+    let projection_matrix: glam::Mat4 =
+        glam::Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, aspect_ratio, 0.01, 100.0);
+    let transform_matrix: glam::Mat4 = projection_matrix * view_matrix;
+
+    let directional: [f32; 3] = scene.get().directional_light_angle;
+    let ambient: [f32; 4] = scene.get().ambient_light_color;
+    let inverse_projection: glam::Mat4 = transform_matrix.inverse();
+
+    let mut uniform_total: Vec<f32> = Vec::new();
+    uniform_total.extend_from_slice(&directional);
+    uniform_total.extend_from_slice(&[0.0]); // Padding!
+    uniform_total.extend_from_slice(&ambient);
+    uniform_total.extend_from_slice(&inverse_projection.to_cols_array().to_vec());
+
+    let uniform_ref: &[f32] = uniform_total.as_ref();
+    interface
+        .queue
+        .write_buffer(&resource.uniform_buf, 0, bytemuck::cast_slice(uniform_ref));
 }
 
 // Forward vertex color shader --------------------------------------------------------------------
@@ -719,7 +758,7 @@ pub fn init_color_shader(interface: &WebGPUInterface, mesh: &common::Mesh) -> We
 }
 
 #[allow(dead_code)]
-pub fn write_color_buffer(
+pub fn update_color_uniform(
     scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>>,
     interface: &WebGPUInterface,
     resource: &WebGPURenderResource,
@@ -906,7 +945,7 @@ pub fn init_phong_shader(interface: &WebGPUInterface, mesh: &common::Mesh) -> We
 }
 
 #[allow(dead_code)]
-pub fn write_phong_buffer(
+pub fn update_phong_uniform(
     scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>>,
     interface: &WebGPUInterface,
     resource: &WebGPURenderResource,
@@ -1076,7 +1115,9 @@ pub fn render_differed_main(
                     }),
                 ],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &interface.depth_texture.create_view(&wgpu::TextureViewDescriptor::default()),
+                    view: &interface
+                        .depth_texture
+                        .create_view(&wgpu::TextureViewDescriptor::default()),
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
                         store: wgpu::StoreOp::Store,
