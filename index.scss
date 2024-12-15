@@ -1,3 +1,12 @@
+$background-color: #f6f6f6;
+$text-color: #3d3d3d;
+$title-background-color: #efefef;
+$title-text-color: #3d3d3d;
+$widget-color: #eaeaea;
+$hover-color: #f0f0f0;
+$focus-color: #fafafa;
+$value-color: #07aacf;
+
 body{
 	margin: 0;
 	padding: 0;
@@ -9,4 +18,63 @@ body{
 	height: 100vh;
 	padding: 0;
 	margin: 0;
+}
+
+
+#left-panel{
+	background-color: $background-color;
+	font-family: Consolas;
+	color: $text-color;
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 200px;
+	padding: 5px;
+	margin: 5px;
+}
+
+.panel-title{
+	font-size:smaller;
+	font-weight: bolder;
+	margin: 10px;
+}
+
+.panel-widget{
+	height: 20px;
+	font-size:smaller;
+	font-weight: 400;
+	margin: 2px;
+	display: flex;
+    flex-wrap: wrap;
+}
+
+.widget-label{
+	width: calc(100% / 2);
+}
+
+.widget-value{
+	width: calc(100% / 2);
+}
+
+// Each widgets
+
+.select-element{
+	appearance: none;
+    //border: 1px solid $text-color;
+	border: 0px;
+    border-radius: 3px;
+    background-color: $widget-color;
+    color: $value-color;
+}
+
+.select-element:focus{
+	outline: 0px;
+	//background-color: $focus-color;
+}
+
+.color-picker-element{
+	border: 0px;
+	border-radius: 3px;
+	outline: 0px;
+	height: inherit;
 }

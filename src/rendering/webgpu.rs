@@ -1060,6 +1060,7 @@ pub fn render_main(interface: &WebGPUInterface, resources: &Vec<WebGPURenderReso
 #[allow(dead_code)]
 pub fn render_differed_main(
     interface: &WebGPUInterface,
+    scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>>,
     gbuffer: &WebGPUDifferedGBuffer,
     resources: &Vec<WebGPURenderResource>,
     differed_resource: &WebGPUDifferedResource,
@@ -1147,10 +1148,10 @@ pub fn render_differed_main(
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.8,
-                            g: 0.8,
-                            b: 0.8,
-                            a: 1.0,
+                            r: scene.get().background_color[0] as f64,
+                            g: scene.get().background_color[1] as f64,
+                            b: scene.get().background_color[2] as f64,
+                            a: scene.get().background_color[3] as f64,
                         }),
                         store: wgpu::StoreOp::Store,
                     },

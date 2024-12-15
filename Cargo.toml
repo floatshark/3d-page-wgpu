@@ -37,6 +37,7 @@ features = [
 	'MouseEvent',
 	'WheelEvent',
 	'KeyboardEvent',
+	'InputEvent',
 	'Node',
 	'Window',
 	'Location'

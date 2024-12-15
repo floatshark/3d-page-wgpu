@@ -14,26 +14,30 @@ pub async fn main() {
 
     log::debug!("Main");
 
-    // Javascript  --------------------------------------------------------------
+    // Javascript
 
-    let mouse_event_js: std::rc::Rc<std::cell::Cell<frontend::controls::MouseEventResponseJs>> =
-        std::rc::Rc::new(std::cell::Cell::new(
-            frontend::controls::MouseEventResponseJs::default(),
-        ));
-    frontend::controls::add_event_listener_control(&mouse_event_js);
+    let mouse_event_js: std::rc::Rc<
+        std::cell::Cell<frontend::eventlistener::MouseEventResponseJs>,
+    > = std::rc::Rc::new(std::cell::Cell::new(
+        frontend::eventlistener::MouseEventResponseJs::default(),
+    ));
+    frontend::eventlistener::add_event_listener_control(&mouse_event_js);
 
-    // Scene  -------------------------------------------------------------------
+    // Scene
 
     let scene: std::rc::Rc<std::cell::Cell<engine::update::Scene>> =
         std::rc::Rc::new(std::cell::Cell::new(engine::update::Scene::get_init()));
-    let scene_clone: std::rc::Rc<std::cell::Cell<engine::update::Scene>> = scene.clone();
 
-    // Model loading  -----------------------------------------------------------
+    // GUI
+
+    frontend::gui::start_gui(&scene);
+
+    // Model loading  -
 
     let obj_meshes: Vec<rendering::common::Mesh> =
         engine::load::load_obj(engine::define::OBJ_BUNNY_PATH).await;
 
-    // Rendering  ---------------------------------------------------------------
+    // Rendering
 
     let webgpu_interface: rendering::webgpu::WebGPUInterface =
         rendering::webgpu::init_interface().await;
@@ -60,7 +64,7 @@ pub async fn main() {
     let f: std::rc::Rc<_> = std::rc::Rc::new(std::cell::RefCell::new(None));
     let g: std::rc::Rc<std::cell::RefCell<Option<_>>> = f.clone();
     *g.borrow_mut() = Some(wasm_bindgen::closure::Closure::wrap(Box::new(move || {
-        engine::update::update_js(&scene_clone, &mouse_event_js);
+        engine::update::update_js(&scene, &mouse_event_js);
         /*
         for webgpu_resource in webgpu_resources.iter() {
             rendering::webgpu::write_phong_buffer(
@@ -73,15 +77,16 @@ pub async fn main() {
 
         for gbuffer_resource in gbuffer_resources.iter() {
             rendering::webgpu::upadte_differed_gbuffers_uniform(
-                &scene_clone,
+                &scene,
                 &webgpu_interface,
                 &gbuffer_resource,
             );
         }
-        rendering::webgpu::update_differed_uniform(&scene_clone, &webgpu_interface, &differed_resource);
-        
+        rendering::webgpu::update_differed_uniform(&scene, &webgpu_interface, &differed_resource);
+
         rendering::webgpu::render_differed_main(
             &webgpu_interface,
+            &scene,
             &gbuffers,
             &gbuffer_resources,
             &differed_resource,

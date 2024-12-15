@@ -8,6 +8,7 @@ pub struct Scene {
     pub eye_direction: glam::Vec3,
     pub directional_light_angle: [f32; 3],
     pub ambient_light_color: [f32; 4],
+    pub background_color: [f32; 4],
 }
 impl Scene {
     pub fn get_init() -> Scene {
@@ -20,6 +21,7 @@ impl Scene {
             eye_direction: -glam::Vec3::X,
             directional_light_angle: [0.0, 0.0, -1.0],
             ambient_light_color: [0.2, 0.2, 0.2, 1.0],
+            background_color: [1.0, 1.0, 1.0, 1.0],
         }
     }
 }
@@ -28,7 +30,7 @@ impl Scene {
 
 pub fn update_js(
     scene: &std::rc::Rc<std::cell::Cell<Scene>>,
-    mouse_event_js: &std::rc::Rc<std::cell::Cell<frontend::controls::MouseEventResponseJs>>,
+    mouse_event_js: &std::rc::Rc<std::cell::Cell<frontend::eventlistener::MouseEventResponseJs>>,
 ) {
     let mut eye: glam::Vec3 = scene.get().eye_location;
     let mut direction: glam::Vec3 = scene.get().eye_direction;
@@ -70,7 +72,7 @@ pub fn update_js(
     scene.set(scene_updated);
 
     // Event context override
-    let mut override_event: frontend::controls::MouseEventResponseJs = mouse_event_js.get();
+    let mut override_event: frontend::eventlistener::MouseEventResponseJs = mouse_event_js.get();
     override_event.on_click = false;
     override_event.on_wheel = false;
     mouse_event_js.set(override_event);
