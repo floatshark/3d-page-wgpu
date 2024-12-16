@@ -7,7 +7,7 @@ $hover-color: #f0f0f0;
 $focus-color: #fafafa;
 $value-color: #07aacf;
 
-body{
+body {
 	margin: 0;
 	padding: 0;
 	overflow: hidden;
@@ -21,7 +21,9 @@ body{
 }
 
 
-#left-panel{
+// Gui alignment
+
+#left-panel {
 	background-color: $background-color;
 	font-family: Consolas;
 	color: $text-color;
@@ -30,16 +32,55 @@ body{
 	left: 0;
 	width: 200px;
 	padding: 5px;
-	margin: 5px;
-}
-
-.panel-title{
-	font-size:smaller;
-	font-weight: bolder;
 	margin: 10px;
 }
 
-.panel-widget{
+// Accordion
+
+.accordion-input {
+	display: none;
+}
+.accordion-label, .accordion-content {
+	-webkit-backface-visibility: hidden;
+	backface-visibility: hidden;
+	transform: translateZ(0);
+	transition: all 0.3s;
+}
+.accordion-label {
+	display: block;
+	color: $text-color;
+	font-size: medium;
+	font-weight: bold;
+	margin: 5px;
+}
+.accordion-label::after, .accordion-label::before {
+	content: "";
+	position: absolute;
+	right: 5%;
+	top: 20%;
+	width: 2px;
+	height: 0.75em;
+	background-color: #999;
+	transition: all 0.3s;
+}
+.accordion-label::after {
+	transform: rotate(90deg);
+}
+.accordion-content {
+	max-height: 0;
+	overflow: hidden;
+}
+.accordion-input:checked + .accordion-label + .accordion-content {
+	max-height: 500px;
+	transition: all 1.5s;
+}
+.accordion-input:checked + .accordion-label::before {
+transform: rotate(90deg) !important;
+}
+
+// widget
+
+.widget-row{
 	height: 20px;
 	font-size:smaller;
 	font-weight: 400;
@@ -56,15 +97,15 @@ body{
 	width: calc(100% / 2);
 }
 
-// Each widgets
+// Each widgets element
 
 .select-element{
 	appearance: none;
-    //border: 1px solid $text-color;
 	border: 0px;
     border-radius: 3px;
     background-color: $widget-color;
     color: $value-color;
+	text-align-last: center
 }
 
 .select-element:focus{
