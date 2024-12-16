@@ -32,7 +32,7 @@ pub async fn main() {
 
     frontend::gui::start_gui(&scene);
 
-    // Model loading  -
+    // Model loading
 
     let obj_meshes: Vec<rendering::common::Mesh> =
         engine::load::load_obj(engine::define::OBJ_BUNNY_PATH).await;
@@ -53,44 +53,47 @@ pub async fn main() {
     let differed_resource: rendering::webgpu::WebGPUDifferedResource =
         rendering::webgpu::init_differed_shading(&webgpu_interface, &gbuffers);
 
-    /*let mut webgpu_resources: Vec<rendering::webgpu::WebGPURenderResource> = Vec::new();
+    let mut webgpu_resources: Vec<rendering::webgpu::WebGPURenderResource> = Vec::new();
     for obj_mesh in obj_meshes.iter() {
         let webgpu_resource = rendering::webgpu::init_phong_shader(&webgpu_interface, &obj_mesh);
         webgpu_resources.push(webgpu_resource);
-    }*/
+    }
 
-    // Loop  --------------------------------------------------------------------
+    // Loop
 
     let f: std::rc::Rc<_> = std::rc::Rc::new(std::cell::RefCell::new(None));
     let g: std::rc::Rc<std::cell::RefCell<Option<_>>> = f.clone();
     *g.borrow_mut() = Some(wasm_bindgen::closure::Closure::wrap(Box::new(move || {
         engine::update::update_js(&scene, &mouse_event_js);
-        /*
-        for webgpu_resource in webgpu_resources.iter() {
-            rendering::webgpu::write_phong_buffer(
-                &scene_clone,
-                &webgpu_interface,
-                &webgpu_resource,
-            );
-        }
-        rendering::webgpu::render_main(&webgpu_interface, &webgpu_resources);*/
 
-        for gbuffer_resource in gbuffer_resources.iter() {
-            rendering::webgpu::upadte_differed_gbuffers_uniform(
+        if scene.get().render_type == 0 {
+            for gbuffer_resource in gbuffer_resources.iter() {
+                rendering::webgpu::upadte_differed_gbuffers_buffer(
+                    &scene,
+                    &webgpu_interface,
+                    &gbuffer_resource,
+                );
+            }
+            rendering::webgpu::update_differed_buffer(
                 &scene,
                 &webgpu_interface,
-                &gbuffer_resource,
+                &differed_resource,
             );
-        }
-        rendering::webgpu::update_differed_uniform(&scene, &webgpu_interface, &differed_resource);
 
-        rendering::webgpu::render_differed_main(
-            &webgpu_interface,
-            &scene,
-            &gbuffers,
-            &gbuffer_resources,
-            &differed_resource,
-        );
+            rendering::webgpu::render_differed_main(
+                &webgpu_interface,
+                &scene,
+                &gbuffers,
+                &gbuffer_resources,
+                &differed_resource,
+            );
+        } else if scene.get().render_type == 1 {
+            for webgpu_resource in webgpu_resources.iter() {
+                rendering::webgpu::update_phong_buffer(&scene, &webgpu_interface, &webgpu_resource);
+            }
+
+            rendering::webgpu::render_forward_main(&webgpu_interface, &scene, &webgpu_resources);
+        }
 
         request_animation_frame(f.borrow().as_ref().unwrap());
     })

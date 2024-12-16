@@ -33,6 +33,7 @@ fn create_left_panel(scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>>
 
         let render_type_select_element = gloo::utils::document().create_element("select").unwrap();
         render_type_select_element.set_class_name("widget-value select-element");
+        render_type_select_element.set_id("render-type-select");
 
         let render_type_option_differed = gloo::utils::document().create_element("option").unwrap();
         render_type_option_differed.set_node_value(Some("differed"));
@@ -40,6 +41,35 @@ fn create_left_panel(scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>>
         let render_type_option_forward = gloo::utils::document().create_element("option").unwrap();
         render_type_option_forward.set_node_value(Some("forward"));
         render_type_option_forward.set_text_content(Some("forward"));
+
+        {
+            let scene_clone: std::rc::Rc<std::cell::Cell<engine::update::Scene>> = scene.clone();
+            let render_type_closure: wasm_bindgen::prelude::Closure<dyn FnMut(_)> =
+                wasm_bindgen::closure::Closure::wrap(Box::new(move |_event: web_sys::InputEvent| {
+                    let render_type_element: web_sys::Element = gloo::utils::document()
+                        .get_element_by_id("render-type-select")
+                        .unwrap();
+                    let render_type_element: web_sys::HtmlSelectElement =
+                        render_type_element.dyn_into().unwrap();
+                    let value: String = render_type_element.value();
+
+                    let mut scene_value: engine::update::Scene = scene_clone.get();
+                    match value.as_str() {
+                        "differed" => scene_value.render_type = 0,
+                        "forward" => scene_value.render_type = 1,
+                        _ => scene_value.render_type = 0,
+                    }
+                    scene_clone.set(scene_value);
+                }) as Box<dyn FnMut(_)>);
+
+            render_type_select_element
+                .add_event_listener_with_callback(
+                    "change",
+                    render_type_closure.as_ref().unchecked_ref(),
+                )
+                .unwrap();
+            render_type_closure.forget();
+        }
 
         render_type_select_element
             .append_child(&render_type_option_differed)
@@ -86,7 +116,6 @@ fn create_left_panel(scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>>
             let b_hex: String = format!("{b_uint:X}");
 
             let hex_string: String = "#".to_string() + &r_hex + &g_hex + &b_hex;
-            log::debug!("{}", hex_string);
             clearcolor_picker_element
                 .set_attribute("value", &hex_string)
                 .unwrap();

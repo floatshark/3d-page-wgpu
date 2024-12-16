@@ -352,7 +352,7 @@ pub fn init_differed_gbuffers_shader(
 }
 
 #[allow(dead_code)]
-pub fn upadte_differed_gbuffers_uniform(
+pub fn upadte_differed_gbuffers_buffer(
     scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>>,
     interface: &WebGPUInterface,
     resource: &WebGPURenderResource,
@@ -565,7 +565,7 @@ pub fn init_differed_shading(
 }
 
 #[allow(dead_code)]
-pub fn update_differed_uniform(
+pub fn update_differed_buffer(
     scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>>,
     interface: &WebGPUInterface,
     resource: &WebGPUDifferedResource,
@@ -758,7 +758,7 @@ pub fn init_color_shader(interface: &WebGPUInterface, mesh: &common::Mesh) -> We
 }
 
 #[allow(dead_code)]
-pub fn update_color_uniform(
+pub fn update_color_buffer(
     scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>>,
     interface: &WebGPUInterface,
     resource: &WebGPURenderResource,
@@ -945,7 +945,7 @@ pub fn init_phong_shader(interface: &WebGPUInterface, mesh: &common::Mesh) -> We
 }
 
 #[allow(dead_code)]
-pub fn update_phong_uniform(
+pub fn update_phong_buffer(
     scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>>,
     interface: &WebGPUInterface,
     resource: &WebGPURenderResource,
@@ -986,7 +986,11 @@ pub fn update_phong_uniform(
 // Render functions--------------------------------------------------------------------------------
 
 #[allow(dead_code)]
-pub fn render_main(interface: &WebGPUInterface, resources: &Vec<WebGPURenderResource>) {
+pub fn render_forward_main(
+    interface: &WebGPUInterface,
+    scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>>,
+    resources: &Vec<WebGPURenderResource>,
+) {
     let frame: wgpu::SurfaceTexture = interface
         .surface
         .get_current_texture()
@@ -1010,24 +1014,27 @@ pub fn render_main(interface: &WebGPUInterface, resources: &Vec<WebGPURenderReso
                 dimension: Some(wgpu::TextureViewDimension::D2),
             });
 
-    let mut encoder = interface
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+    let mut encoder: wgpu::CommandEncoder =
+        interface
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Forward render encoder"),
+            });
 
     // Forward main path
     {
         let mut rpass: wgpu::RenderPass<'_> =
             encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: None,
+                label: Some("Forward render pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.8,
-                            g: 0.8,
-                            b: 0.8,
-                            a: 1.0,
+                            r: scene.get().background_color[0] as f64,
+                            g: scene.get().background_color[1] as f64,
+                            b: scene.get().background_color[2] as f64,
+                            a: scene.get().background_color[3] as f64,
                         }),
                         store: wgpu::StoreOp::Store,
                     },
@@ -1074,15 +1081,18 @@ pub fn render_differed_main(
         .texture
         .create_view(&wgpu::TextureViewDescriptor::default());
 
-    let mut encoder = interface
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+    let mut encoder: wgpu::CommandEncoder =
+        interface
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Differed render encoder"),
+            });
 
-    // gbuffer path
+    // gbuffer pass
     {
         let mut gbuffer_pass: wgpu::RenderPass<'_> =
             encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: None,
+                label: Some("Differed gbuffer pass"),
                 color_attachments: &[
                     Some(wgpu::RenderPassColorAttachment {
                         view: &gbuffer
@@ -1138,11 +1148,11 @@ pub fn render_differed_main(
         }
     }
 
-    // differed path
+    // differed pass
     {
         let mut differed_pass: wgpu::RenderPass<'_> =
             encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: None,
+                label: Some("Differed render pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
                     resolve_target: None,
