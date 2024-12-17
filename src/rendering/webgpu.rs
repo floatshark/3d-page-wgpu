@@ -380,6 +380,11 @@ struct DifferedUniform {
     _directional_light: [f32; 4],
     _ambient_light: [f32; 4],
     _inverse_matrix: [f32; 16],
+    _debug: DifferedDebugUniform,
+}
+struct DifferedDebugUniform {
+    _buffer_type: f32,
+    _padding: [f32; 3],
 }
 
 pub fn init_differed_shading(
@@ -621,6 +626,7 @@ pub fn update_differed_buffer(
     uniform_total.extend_from_slice(&[0.0]); // Padding!
     uniform_total.extend_from_slice(&ambient);
     uniform_total.extend_from_slice(&inverse_projection.to_cols_array().to_vec());
+    uniform_total.extend_from_slice(&[scene.get().differed_debug_type as f32, 0.0, 0.0, 0.0]);
 
     let uniform_ref: &[f32] = uniform_total.as_ref();
     interface
@@ -1194,10 +1200,10 @@ pub fn render_differed_main(
                 occlusion_query_set: None,
             });
 
-        match scene.get().differed_debug_type {
-            0 => differed_pass.set_pipeline(&differed_resource.render_pipeline),
-            1 => differed_pass.set_pipeline(&differed_resource.debug_pipeline),
-            _ => differed_pass.set_pipeline(&differed_resource.render_pipeline),
+        if scene.get().differed_debug_type == 0 {
+            differed_pass.set_pipeline(&differed_resource.render_pipeline);
+        } else {
+            differed_pass.set_pipeline(&differed_resource.debug_pipeline);
         }
 
         differed_pass.set_bind_group(0, &differed_resource.bind_groups[0], &[]);

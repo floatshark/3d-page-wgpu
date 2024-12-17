@@ -14,6 +14,7 @@ struct Uniform
     directional_light  : vec4<f32>,
     ambient_light      : vec4<f32>,
     inverse_matrix     : mat4x4<f32>,
+    buffer_type        : f32,
 }
 
 @group(0) @binding(0) var gbuffer_position : texture_2d<f32>;
@@ -74,7 +75,15 @@ fn fs_debug_main( @builtin(position) coord : vec4f ) -> @location(0) vec4f
 
     depth = (1.0 - depth) * 50.0;
 
-    return vec4(normal, 1.0);
+    // ummm
+    if(inUniform.buffer_type == 1.0)
+    {
+      return vec4(normal, 1.0);
+    }
+    else if(inUniform.buffer_type == 2.0)
+    {
+      return vec4(depth, 0.0, 0.0, 1.0);
+    }
 
-    //return vec4(depth, 0.0, 0.0, 1.0);
+    return vec4(depth, 0.0, 0.0, 1.0);
 }
