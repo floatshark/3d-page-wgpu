@@ -10,6 +10,7 @@ pub struct Scene {
     pub ambient_light_color: [f32; 4],
     pub background_color: [f32; 4],
     pub render_type: u8,
+    pub differed_debug_type: u8,
 }
 impl Scene {
     pub fn get_init() -> Scene {
@@ -22,8 +23,9 @@ impl Scene {
             eye_direction: -glam::Vec3::X,
             directional_light_angle: [0.0, 0.0, -1.0],
             ambient_light_color: [0.2, 0.2, 0.2, 1.0],
-            background_color: [0.0, 0.0, 0.0, 1.0],
+            background_color: [0.7, 0.7, 0.7, 1.0],
             render_type: 0,
+            differed_debug_type: 0,
         }
     }
 }

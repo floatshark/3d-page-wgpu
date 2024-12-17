@@ -35,7 +35,7 @@ pub async fn main() {
     // Model loading
 
     let obj_meshes: Vec<rendering::common::Mesh> =
-        engine::load::load_obj(engine::define::OBJ_BUNNY_PATH).await;
+        engine::load::load_obj(engine::define::OBJ_SPHERE_PATH).await;
 
     // Rendering
 
@@ -91,7 +91,6 @@ pub async fn main() {
             for webgpu_resource in webgpu_resources.iter() {
                 rendering::webgpu::update_phong_buffer(&scene, &webgpu_interface, &webgpu_resource);
             }
-
             rendering::webgpu::render_forward_main(&webgpu_interface, &scene, &webgpu_resources);
         }
 

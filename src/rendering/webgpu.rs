@@ -38,6 +38,7 @@ pub struct WebGPUDifferedResource {
     pub bind_groups: Vec<wgpu::BindGroup>,
     pub uniform_buf: wgpu::Buffer,
     pub render_pipeline: wgpu::RenderPipeline,
+    pub debug_pipeline: wgpu::RenderPipeline,
 }
 
 // Webgpu contexts --------------------------------------------------------------------------------
@@ -127,7 +128,6 @@ pub async fn init_interface<'a>() -> WebGPUInterface<'a> {
     return resource;
 }
 
-#[allow(dead_code)]
 pub fn init_differed_gbuffer(interface: &WebGPUInterface) -> WebGPUDifferedGBuffer {
     let canvas: web_sys::Element = gloo::utils::document()
         .get_element_by_id(define::CANVAS_ELEMENT_ID)
@@ -180,16 +180,14 @@ pub fn init_differed_gbuffer(interface: &WebGPUInterface) -> WebGPUDifferedGBuff
 }
 
 // Differed rendering -----------------------------------------------------------------------------
+struct WriteGBuffersUniform {
+    _transform_matrix: [f32; 16],
+}
 
-#[allow(dead_code)]
 pub fn init_differed_gbuffers_shader(
     interface: &WebGPUInterface,
     mesh: &common::Mesh,
 ) -> WebGPURenderResource {
-    struct WriteGBuffersUniform {
-        transform_matrix: [f32; 16],
-    }
-
     let shader: wgpu::ShaderModule =
         interface
             .device
@@ -351,7 +349,6 @@ pub fn init_differed_gbuffers_shader(
     return render_resource;
 }
 
-#[allow(dead_code)]
 pub fn upadte_differed_gbuffers_buffer(
     scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>>,
     interface: &WebGPUInterface,
@@ -379,17 +376,16 @@ pub fn upadte_differed_gbuffers_buffer(
         .write_buffer(&resource.uniform_buf, 0, bytemuck::cast_slice(mx_ref));
 }
 
-#[allow(dead_code)]
+struct DifferedUniform {
+    _directional_light: [f32; 4],
+    _ambient_light: [f32; 4],
+    _inverse_matrix: [f32; 16],
+}
+
 pub fn init_differed_shading(
     interface: &WebGPUInterface,
     gbuffer: &WebGPUDifferedGBuffer,
 ) -> WebGPUDifferedResource {
-    struct DifferedUniform {
-        directional_light: [f32; 4],
-        ambient_light: [f32; 4],
-        inverse_matrix: [f32; 16],
-    }
-
     let shader: wgpu::ShaderModule =
         interface
             .device
@@ -492,7 +488,7 @@ pub fn init_differed_shading(
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: false,
-                    min_binding_size: wgpu::BufferSize::new(uniform_size),
+                    min_binding_size: None,
                 },
                 count: None,
             }],
@@ -507,7 +503,7 @@ pub fn init_differed_shading(
                     binding: 0,
                     resource: uniform_buf.as_entire_binding(),
                 }],
-                label: Some("Bind group 0"),
+                label: Some("Bind group 1"),
             });
 
     // pipeline
@@ -535,7 +531,36 @@ pub fn init_differed_shading(
                 },
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
-                    entry_point: Some(define::FS_ENTRY_POINT),
+                    entry_point: Some(engine::define::FS_ENTRY_POINT),
+                    compilation_options: Default::default(),
+                    targets: &[Some(interface.swapchain_format.into())],
+                }),
+                primitive: wgpu::PrimitiveState {
+                    front_face: wgpu::FrontFace::Ccw,
+                    cull_mode: Some(WEBGPU_CULL_MODE),
+                    ..Default::default()
+                },
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
+                cache: None,
+            });
+
+    let debug_pipeline: wgpu::RenderPipeline =
+        interface
+            .device
+            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: None,
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some(define::VS_ENTRY_POINT),
+                    compilation_options: Default::default(),
+                    buffers: &[],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs_debug_main"),
                     compilation_options: Default::default(),
                     targets: &[Some(interface.swapchain_format.into())],
                 }),
@@ -559,12 +584,12 @@ pub fn init_differed_shading(
         bind_groups,
         uniform_buf,
         render_pipeline,
+        debug_pipeline,
     };
 
     return resource;
 }
 
-#[allow(dead_code)]
 pub fn update_differed_buffer(
     scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>>,
     interface: &WebGPUInterface,
@@ -985,7 +1010,6 @@ pub fn update_phong_buffer(
 
 // Render functions--------------------------------------------------------------------------------
 
-#[allow(dead_code)]
 pub fn render_forward_main(
     interface: &WebGPUInterface,
     scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>>,
@@ -1064,7 +1088,6 @@ pub fn render_forward_main(
     frame.present();
 }
 
-#[allow(dead_code)]
 pub fn render_differed_main(
     interface: &WebGPUInterface,
     scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>>,
@@ -1118,7 +1141,7 @@ pub fn render_differed_main(
                             load: wgpu::LoadOp::Clear(wgpu::Color {
                                 r: 0.0,
                                 g: 0.0,
-                                b: 0.0,
+                                b: 1.0,
                                 a: 1.0,
                             }),
                             store: wgpu::StoreOp::Store,
@@ -1171,7 +1194,12 @@ pub fn render_differed_main(
                 occlusion_query_set: None,
             });
 
-        differed_pass.set_pipeline(&differed_resource.render_pipeline);
+        match scene.get().differed_debug_type {
+            0 => differed_pass.set_pipeline(&differed_resource.render_pipeline),
+            1 => differed_pass.set_pipeline(&differed_resource.debug_pipeline),
+            _ => differed_pass.set_pipeline(&differed_resource.render_pipeline),
+        }
+
         differed_pass.set_bind_group(0, &differed_resource.bind_groups[0], &[]);
         differed_pass.set_bind_group(1, &differed_resource.bind_groups[1], &[]);
         differed_pass.draw(0..6, 0..1);
