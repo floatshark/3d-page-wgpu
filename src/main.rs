@@ -35,7 +35,7 @@ pub async fn main() {
     // Model loading
 
     let obj_meshes: Vec<rendering::common::Mesh> =
-        engine::load::load_obj(engine::define::OBJ_SPHERE_PATH).await;
+        engine::load::load_obj(engine::define::OBJ_BUNNY_PATH).await;
 
     // Rendering
 

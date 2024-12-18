@@ -324,7 +324,7 @@ pub fn init_differed_gbuffers_shader(
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: WEBGPU_DEPTH_FORMAT,
                     depth_write_enabled: true,
-                    depth_compare: wgpu::CompareFunction::LessEqual,
+                    depth_compare: wgpu::CompareFunction::Less,
                     stencil: wgpu::StencilState::default(),
                     bias: wgpu::DepthBiasState::default(),
                 }),
@@ -763,7 +763,7 @@ pub fn init_color_shader(interface: &WebGPUInterface, mesh: &common::Mesh) -> We
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: wgpu::TextureFormat::Depth24Plus,
                     depth_write_enabled: true,
-                    depth_compare: wgpu::CompareFunction::LessEqual,
+                    depth_compare: wgpu::CompareFunction::Less,
                     stencil: wgpu::StencilState::default(),
                     bias: wgpu::DepthBiasState::default(),
                 }),
@@ -950,7 +950,7 @@ pub fn init_phong_shader(interface: &WebGPUInterface, mesh: &common::Mesh) -> We
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: WEBGPU_DEPTH_FORMAT,
                     depth_write_enabled: true,
-                    depth_compare: wgpu::CompareFunction::LessEqual,
+                    depth_compare: wgpu::CompareFunction::Less,
                     stencil: wgpu::StencilState::default(),
                     bias: wgpu::DepthBiasState::default(),
                 }),
