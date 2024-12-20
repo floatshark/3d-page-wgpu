@@ -1,7 +1,7 @@
 use crate::engine;
 use wasm_bindgen::JsCast;
 
-pub fn start_gui(scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>>) {
+pub fn start_gui(scene: &std::rc::Rc<std::cell::RefCell<engine::scene::Scene>>) {
     create_panels();
     create_view_dialog(scene);
 }
@@ -12,75 +12,73 @@ fn create_panels() {
     let panel_wrapper: web_sys::Element = gloo::utils::document().create_element("div").unwrap();
     panel_wrapper.set_id("panel-wrapper");
 
-	// Weather panel
-	{
-		let panel_weather_radio: web_sys::Element =
-			gloo::utils::document().create_element("input").unwrap();
-		let panel_weather_radio: web_sys::HtmlInputElement =
-			panel_weather_radio.dyn_into().unwrap();
-		panel_weather_radio.set_id("panel-weather-checkbox");
-		panel_weather_radio.set_class_name("panel-checkbox");
-		panel_weather_radio
-			.set_attribute("type", "checkbox")
-			.unwrap();
-		panel_weather_radio
-			.set_attribute("name", "panel")
-			.unwrap();
+    // Weather panel
+    {
+        let panel_weather_radio: web_sys::Element =
+            gloo::utils::document().create_element("input").unwrap();
+        let panel_weather_radio: web_sys::HtmlInputElement =
+            panel_weather_radio.dyn_into().unwrap();
+        panel_weather_radio.set_id("panel-weather-checkbox");
+        panel_weather_radio.set_class_name("panel-checkbox");
+        panel_weather_radio
+            .set_attribute("type", "checkbox")
+            .unwrap();
+        panel_weather_radio.set_attribute("name", "panel").unwrap();
 
-		let panel_weather_label: web_sys::Element =
-			gloo::utils::document().create_element("label").unwrap();
-		panel_weather_label.set_class_name("panel-label");
-		panel_weather_label
-			.set_attribute("for", "panel-weather-checkbox")
-			.unwrap();
+        let panel_weather_label: web_sys::Element =
+            gloo::utils::document().create_element("label").unwrap();
+        panel_weather_label.set_class_name("panel-label");
+        panel_weather_label
+            .set_attribute("for", "panel-weather-checkbox")
+            .unwrap();
 
-		let panel_weather_icon: web_sys::Element =
-			gloo::utils::document().create_element("span").unwrap();
-		panel_weather_icon.set_class_name("material-symbols-outlined");
-		panel_weather_icon.set_text_content(Some("partly_cloudy_day"));
+        let panel_weather_icon: web_sys::Element =
+            gloo::utils::document().create_element("span").unwrap();
+        panel_weather_icon.set_class_name("material-symbols-outlined");
+        panel_weather_icon.set_text_content(Some("partly_cloudy_day"));
 
-		panel_weather_label
-			.append_child(&panel_weather_icon)
-			.unwrap();
+        panel_weather_label
+            .append_child(&panel_weather_icon)
+            .unwrap();
 
-		panel_wrapper.append_child(&panel_weather_radio).unwrap();
-		panel_wrapper.append_child(&panel_weather_label).unwrap();
+        panel_wrapper.append_child(&panel_weather_radio).unwrap();
+        panel_wrapper.append_child(&panel_weather_label).unwrap();
 
-		{
-			let panel_weather_closure: wasm_bindgen::prelude::Closure<dyn FnMut(_)> =
-				wasm_bindgen::closure::Closure::wrap(Box::new(move |_event: web_sys::InputEvent| {
-					let weather_checkbox: web_sys::Element = gloo::utils::document()
-						.get_element_by_id("panel-weather-checkbox")
-						.unwrap();
-					let weather_checkbox: web_sys::HtmlInputElement =
-						weather_checkbox.dyn_into().unwrap();
-					let checked: bool = weather_checkbox.checked();
+        {
+            let panel_weather_closure: wasm_bindgen::prelude::Closure<dyn FnMut(_)> =
+                wasm_bindgen::closure::Closure::wrap(Box::new(move |_event: web_sys::InputEvent| {
+                    let weather_checkbox: web_sys::Element = gloo::utils::document()
+                        .get_element_by_id("panel-weather-checkbox")
+                        .unwrap();
+                    let weather_checkbox: web_sys::HtmlInputElement =
+                        weather_checkbox.dyn_into().unwrap();
+                    let checked: bool = weather_checkbox.checked();
 
-					reset_state();
-					weather_checkbox.set_checked(checked);
+                    reset_state();
+                    weather_checkbox.set_checked(checked);
 
-					let view_weather: web_sys::Element = gloo::utils::document()
-						.get_element_by_id("view-dialog-weather")
-						.unwrap();
-					let view_weather: web_sys::HtmlElement = view_weather.dyn_into().unwrap();
+                    let view_weather: web_sys::Element = gloo::utils::document()
+                        .get_element_by_id("view-dialog-weather")
+                        .unwrap();
+                    let view_weather: web_sys::HtmlElement = view_weather.dyn_into().unwrap();
 
-					if checked {
-						view_weather.set_class_name("view-dialog view-dialog-display");
-					} else {
-						view_weather.set_class_name("view-dialog view-dialog-hidden");
-					}
-				}) as Box<dyn FnMut(_)>);
+                    if checked {
+                        view_weather.set_class_name("view-dialog view-dialog-display");
+                    } else {
+                        view_weather.set_class_name("view-dialog view-dialog-hidden");
+                    }
+                }) as Box<dyn FnMut(_)>);
 
-			panel_weather_radio
-				.add_event_listener_with_callback(
-					"change",
-					panel_weather_closure.as_ref().unchecked_ref(),
-				)
-				.unwrap();
-			panel_weather_closure.forget();
-		}
-	}
-	
+            panel_weather_radio
+                .add_event_listener_with_callback(
+                    "change",
+                    panel_weather_closure.as_ref().unchecked_ref(),
+                )
+                .unwrap();
+            panel_weather_closure.forget();
+        }
+    }
+
     // Graphics panel
     {
         let panel_graphics_radio: web_sys::Element =
@@ -221,15 +219,17 @@ fn create_panels() {
     body.append_child(&panel_wrapper).unwrap();
 }
 
-fn create_view_dialog(scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>>) {
+fn create_view_dialog(scene: &std::rc::Rc<std::cell::RefCell<engine::scene::Scene>>) {
     let body: web_sys::HtmlElement = gloo::utils::body();
 
     let view_wrapper: web_sys::Element = gloo::utils::document().create_element("div").unwrap();
     view_wrapper.set_id("view-wrapper");
 
-	// weather view
-	{
-		let view_weather = gloo::utils::document().create_element("div").unwrap();
+    let scene_value: std::cell::Ref<'_, engine::scene::Scene> = scene.borrow();
+
+    // weather view
+    {
+        let view_weather = gloo::utils::document().create_element("div").unwrap();
         view_weather.set_id("view-dialog-weather");
         view_weather.set_class_name("view-dialog view-dialog-hidden");
 
@@ -255,280 +255,309 @@ fn create_view_dialog(scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>
 
         // sun light
         {
-			let sun_accordion_input_element = gloo::utils::document().create_element("input").unwrap();
-			let sun_accordion_input_element: web_sys::HtmlInputElement =
-				sun_accordion_input_element.dyn_into().unwrap();
-			sun_accordion_input_element
-				.set_attribute("type", "checkbox")
-				.unwrap();
-			sun_accordion_input_element.set_class_name("accordion-input");
-			sun_accordion_input_element.set_id("accordion-sun");
-			sun_accordion_input_element.set_checked(true);
-	
-			let sun_accordion_label_element = gloo::utils::document().create_element("label").unwrap();
-			sun_accordion_label_element.set_class_name("accordion-label inner-accordion-label");
-			sun_accordion_label_element.set_text_content(Some("Sun Light"));
-			sun_accordion_label_element
-				.set_attribute("for", "accordion-sun")
-				.unwrap();
-	
-			let sun_accordion_content_element = gloo::utils::document().create_element("div").unwrap();
-			sun_accordion_content_element.set_class_name("accordion-content inner-accordion-content");
-			
-			// X
-			{
-				let sun_x_element: web_sys::Element =
-					gloo::utils::document().create_element("div").unwrap();
-				sun_x_element.set_class_name("widget-row");
+            let sun_accordion_input_element =
+                gloo::utils::document().create_element("input").unwrap();
+            let sun_accordion_input_element: web_sys::HtmlInputElement =
+                sun_accordion_input_element.dyn_into().unwrap();
+            sun_accordion_input_element
+                .set_attribute("type", "checkbox")
+                .unwrap();
+            sun_accordion_input_element.set_class_name("accordion-input");
+            sun_accordion_input_element.set_id("accordion-sun");
+            sun_accordion_input_element.set_checked(true);
 
-				let sun_x_label_element: web_sys::Element =
-					gloo::utils::document().create_element("div").unwrap();
-				sun_x_label_element.set_class_name("widget-label");
-				sun_x_label_element.set_text_content(Some("X"));
+            let sun_accordion_label_element =
+                gloo::utils::document().create_element("label").unwrap();
+            sun_accordion_label_element.set_class_name("accordion-label inner-accordion-label");
+            sun_accordion_label_element.set_text_content(Some("Sun Light"));
+            sun_accordion_label_element
+                .set_attribute("for", "accordion-sun")
+                .unwrap();
 
-				let sun_x_content_element =
-					gloo::utils::document().create_element("div").unwrap();
-				sun_x_content_element.set_class_name("widget-value");
+            let sun_accordion_content_element =
+                gloo::utils::document().create_element("div").unwrap();
+            sun_accordion_content_element
+                .set_class_name("accordion-content inner-accordion-content");
 
-				{
-					let sun_x_input_range: web_sys::Element = gloo::utils::document().create_element("input").unwrap();
-					let sun_x_input_range: web_sys::HtmlInputElement = sun_x_input_range.dyn_into().unwrap();
-					sun_x_input_range.set_id("sun-range-x");
-					sun_x_input_range.set_class_name("range-element");
-					sun_x_input_range.set_attribute("type", "range").unwrap();
-					sun_x_input_range.set_attribute("min", "-1.0").unwrap();
-					sun_x_input_range.set_attribute("max", "1.0").unwrap();
-					sun_x_input_range.set_attribute("step", "0.01").unwrap();
-					sun_x_input_range.set_value(scene.get().directional_light_angle[0].to_string().as_str());
+            // X
+            {
+                let sun_x_element: web_sys::Element =
+                    gloo::utils::document().create_element("div").unwrap();
+                sun_x_element.set_class_name("widget-row");
 
+                let sun_x_label_element: web_sys::Element =
+                    gloo::utils::document().create_element("div").unwrap();
+                sun_x_label_element.set_class_name("widget-label");
+                sun_x_label_element.set_text_content(Some("X"));
 
-					let sun_x_input_range_text: web_sys::Element = gloo::utils::document().create_element("div").unwrap();
-					sun_x_input_range_text.set_id("sun-range-x-text");
-					sun_x_input_range_text.set_class_name("range-text-element");
-					sun_x_input_range_text.set_text_content(Some(scene.get().directional_light_angle[0].to_string().as_str()));
+                let sun_x_content_element = gloo::utils::document().create_element("div").unwrap();
+                sun_x_content_element.set_class_name("widget-value");
 
-					{
-						let scene_clone: std::rc::Rc<std::cell::Cell<engine::update::Scene>> =
-							scene.clone();
-						let sun_range_x_closure: wasm_bindgen::prelude::Closure<dyn FnMut(_)> =
-							wasm_bindgen::closure::Closure::wrap(Box::new(
-								move |_event: web_sys::InputEvent| {
-									let range_x_element: web_sys::Element = gloo::utils::document()
-										.get_element_by_id("sun-range-x")
-										.unwrap();
-									let range_x_element: web_sys::HtmlInputElement =
-										range_x_element.dyn_into().unwrap();
-									let value: String = range_x_element.value();
-		
-									let mut scene_value: engine::update::Scene = scene_clone.get();
-									scene_value.directional_light_angle[0] = value.parse::<f32>().unwrap();
-									scene_clone.set(scene_value);
+                {
+                    let sun_x_input_range: web_sys::Element =
+                        gloo::utils::document().create_element("input").unwrap();
+                    let sun_x_input_range: web_sys::HtmlInputElement =
+                        sun_x_input_range.dyn_into().unwrap();
+                    sun_x_input_range.set_id("sun-range-x");
+                    sun_x_input_range.set_class_name("range-element");
+                    sun_x_input_range.set_attribute("type", "range").unwrap();
+                    sun_x_input_range.set_attribute("min", "-1.0").unwrap();
+                    sun_x_input_range.set_attribute("max", "1.0").unwrap();
+                    sun_x_input_range.set_attribute("step", "0.01").unwrap();
+                    sun_x_input_range
+                        .set_value(scene_value.directional_light_angle[0].to_string().as_str());
 
-									let range_x_text_element: web_sys::Element = gloo::utils::document()
-									.get_element_by_id("sun-range-x-text")
-									.unwrap();
-									range_x_text_element.set_text_content(Some(&value));
-	
-								},
-							)
-								as Box<dyn FnMut(_)>);
-		
-							sun_x_input_range
-							.add_event_listener_with_callback(
-								"input",
-								sun_range_x_closure.as_ref().unchecked_ref(),
-							)
-							.unwrap();
-						sun_range_x_closure.forget();
-					}
+                    let sun_x_input_range_text: web_sys::Element =
+                        gloo::utils::document().create_element("div").unwrap();
+                    sun_x_input_range_text.set_id("sun-range-x-text");
+                    sun_x_input_range_text.set_class_name("range-text-element");
+                    sun_x_input_range_text.set_text_content(Some(
+                        scene_value.directional_light_angle[0].to_string().as_str(),
+                    ));
 
-					sun_x_content_element.append_child(&sun_x_input_range).unwrap();
-					sun_x_content_element.append_child(&sun_x_input_range_text).unwrap();
-				}
+                    {
+                        let scene_clone: std::rc::Rc<std::cell::RefCell<engine::scene::Scene>> =
+                            scene.clone();
 
-				sun_x_element.append_child(&sun_x_label_element).unwrap();
-				sun_x_element
-					.append_child(&sun_x_content_element)
-					.unwrap();
+                        let sun_range_x_closure: wasm_bindgen::prelude::Closure<dyn FnMut(_)> =
+                            wasm_bindgen::closure::Closure::wrap(Box::new(
+                                move |_event: web_sys::InputEvent| {
+                                    let range_x_element: web_sys::Element = gloo::utils::document()
+                                        .get_element_by_id("sun-range-x")
+                                        .unwrap();
+                                    let range_x_element: web_sys::HtmlInputElement =
+                                        range_x_element.dyn_into().unwrap();
+                                    let value: String = range_x_element.value();
 
-				sun_accordion_content_element
-					.append_child(&sun_x_element)
-					.unwrap();
-			}
-			// Y
-			{
-				let sun_y_element: web_sys::Element =
-					gloo::utils::document().create_element("div").unwrap();
-				sun_y_element.set_class_name("widget-row");
+                                    let mut scene_value = scene_clone.borrow_mut();
+                                    scene_value.directional_light_angle[0] =
+                                        value.parse::<f32>().unwrap();
 
-				let sun_y_label_element: web_sys::Element =
-					gloo::utils::document().create_element("div").unwrap();
-				sun_y_label_element.set_class_name("widget-label");
-				sun_y_label_element.set_text_content(Some("Y"));
+                                    let range_x_text_element: web_sys::Element =
+                                        gloo::utils::document()
+                                            .get_element_by_id("sun-range-x-text")
+                                            .unwrap();
+                                    range_x_text_element.set_text_content(Some(&value));
+                                },
+                            )
+                                as Box<dyn FnMut(_)>);
 
-				let sun_y_content_element =
-					gloo::utils::document().create_element("div").unwrap();
-				sun_y_content_element.set_class_name("widget-value");
+                        sun_x_input_range
+                            .add_event_listener_with_callback(
+                                "input",
+                                sun_range_x_closure.as_ref().unchecked_ref(),
+                            )
+                            .unwrap();
+                        sun_range_x_closure.forget();
+                    }
 
-				{
-					let sun_y_input_range: web_sys::Element = gloo::utils::document().create_element("input").unwrap();
-					let sun_y_input_range: web_sys::HtmlInputElement = sun_y_input_range.dyn_into().unwrap();
-					sun_y_input_range.set_id("sun-range-y");
-					sun_y_input_range.set_class_name("range-element");
-					sun_y_input_range.set_attribute("type", "range").unwrap();
-					sun_y_input_range.set_attribute("min", "-1.0").unwrap();
-					sun_y_input_range.set_attribute("max", "1.0").unwrap();
-					sun_y_input_range.set_attribute("step", "0.01").unwrap();
-					sun_y_input_range.set_value(scene.get().directional_light_angle[1].to_string().as_str());
+                    sun_x_content_element
+                        .append_child(&sun_x_input_range)
+                        .unwrap();
+                    sun_x_content_element
+                        .append_child(&sun_x_input_range_text)
+                        .unwrap();
+                }
 
-					let sun_y_input_range_text: web_sys::Element = gloo::utils::document().create_element("div").unwrap();
-					sun_y_input_range_text.set_id("sun-range-y-text");
-					sun_y_input_range_text.set_class_name("range-text-element");
-					sun_y_input_range_text.set_text_content(Some(scene.get().directional_light_angle[1].to_string().as_str()));
+                sun_x_element.append_child(&sun_x_label_element).unwrap();
+                sun_x_element.append_child(&sun_x_content_element).unwrap();
 
-					{
-						let scene_clone: std::rc::Rc<std::cell::Cell<engine::update::Scene>> =
-							scene.clone();
-						let sun_range_y_closure: wasm_bindgen::prelude::Closure<dyn FnMut(_)> =
-							wasm_bindgen::closure::Closure::wrap(Box::new(
-								move |_event: web_sys::InputEvent| {
-									let range_x_element: web_sys::Element = gloo::utils::document()
-										.get_element_by_id("sun-range-y")
-										.unwrap();
-									let range_y_element: web_sys::HtmlInputElement =
-										range_x_element.dyn_into().unwrap();
-									let value: String = range_y_element.value();
-		
-									let mut scene_value: engine::update::Scene = scene_clone.get();
-									scene_value.directional_light_angle[1] = value.parse::<f32>().unwrap();
-									scene_clone.set(scene_value);
+                sun_accordion_content_element
+                    .append_child(&sun_x_element)
+                    .unwrap();
+            }
+            // Y
+            {
+                let sun_y_element: web_sys::Element =
+                    gloo::utils::document().create_element("div").unwrap();
+                sun_y_element.set_class_name("widget-row");
 
-									let range_y_text_element: web_sys::Element = gloo::utils::document()
-									.get_element_by_id("sun-range-y-text")
-									.unwrap();
-									range_y_text_element.set_text_content(Some(&value));
-	
-								},
-							)
-								as Box<dyn FnMut(_)>);
-		
-							sun_y_input_range
-							.add_event_listener_with_callback(
-								"input",
-								sun_range_y_closure.as_ref().unchecked_ref(),
-							)
-							.unwrap();
-						sun_range_y_closure.forget();
-					}
+                let sun_y_label_element: web_sys::Element =
+                    gloo::utils::document().create_element("div").unwrap();
+                sun_y_label_element.set_class_name("widget-label");
+                sun_y_label_element.set_text_content(Some("Y"));
 
-					sun_y_content_element.append_child(&sun_y_input_range).unwrap();
-					sun_y_content_element.append_child(&sun_y_input_range_text).unwrap();
-				}
-				sun_y_element.append_child(&sun_y_label_element).unwrap();
-				sun_y_element
-					.append_child(&sun_y_content_element)
-					.unwrap();
+                let sun_y_content_element = gloo::utils::document().create_element("div").unwrap();
+                sun_y_content_element.set_class_name("widget-value");
 
-				sun_accordion_content_element
-					.append_child(&sun_y_element)
-					.unwrap();
-			}
-			// Z
-			{
-				let sun_z_element: web_sys::Element =
-					gloo::utils::document().create_element("div").unwrap();
-				sun_z_element.set_class_name("widget-row");
+                {
+                    let sun_y_input_range: web_sys::Element =
+                        gloo::utils::document().create_element("input").unwrap();
+                    let sun_y_input_range: web_sys::HtmlInputElement =
+                        sun_y_input_range.dyn_into().unwrap();
+                    sun_y_input_range.set_id("sun-range-y");
+                    sun_y_input_range.set_class_name("range-element");
+                    sun_y_input_range.set_attribute("type", "range").unwrap();
+                    sun_y_input_range.set_attribute("min", "-1.0").unwrap();
+                    sun_y_input_range.set_attribute("max", "1.0").unwrap();
+                    sun_y_input_range.set_attribute("step", "0.01").unwrap();
+                    sun_y_input_range
+                        .set_value(scene_value.directional_light_angle[1].to_string().as_str());
 
-				let sun_z_label_element: web_sys::Element =
-					gloo::utils::document().create_element("div").unwrap();
-				sun_z_label_element.set_class_name("widget-label");
-				sun_z_label_element.set_text_content(Some("Z"));
+                    let sun_y_input_range_text: web_sys::Element =
+                        gloo::utils::document().create_element("div").unwrap();
+                    sun_y_input_range_text.set_id("sun-range-y-text");
+                    sun_y_input_range_text.set_class_name("range-text-element");
+                    sun_y_input_range_text.set_text_content(Some(
+                        scene_value.directional_light_angle[1].to_string().as_str(),
+                    ));
 
-				let sun_z_content_element =
-					gloo::utils::document().create_element("div").unwrap();
-				sun_z_content_element.set_class_name("widget-value");
+                    {
+                        let scene_clone: std::rc::Rc<std::cell::RefCell<engine::scene::Scene>> =
+                            scene.clone();
 
-				{
-					let sun_z_input_range: web_sys::Element = gloo::utils::document().create_element("input").unwrap();
-					let sun_z_input_range: web_sys::HtmlInputElement = sun_z_input_range.dyn_into().unwrap();
-					sun_z_input_range.set_id("sun-range-z");
-					sun_z_input_range.set_class_name("range-element");
-					sun_z_input_range.set_attribute("type", "range").unwrap();
-					sun_z_input_range.set_attribute("min", "-1.0").unwrap();
-					sun_z_input_range.set_attribute("max", "1.0").unwrap();
-					sun_z_input_range.set_attribute("step", "0.01").unwrap();
-					sun_z_input_range.set_value(scene.get().directional_light_angle[2].to_string().as_str());
+                        let sun_range_y_closure: wasm_bindgen::prelude::Closure<dyn FnMut(_)> =
+                            wasm_bindgen::closure::Closure::wrap(Box::new(
+                                move |_event: web_sys::InputEvent| {
+                                    let range_x_element: web_sys::Element = gloo::utils::document()
+                                        .get_element_by_id("sun-range-y")
+                                        .unwrap();
+                                    let range_y_element: web_sys::HtmlInputElement =
+                                        range_x_element.dyn_into().unwrap();
+                                    let value: String = range_y_element.value();
 
-					let sun_z_input_range_text: web_sys::Element = gloo::utils::document().create_element("div").unwrap();
-					sun_z_input_range_text.set_id("sun-range-z-text");
-					sun_z_input_range_text.set_class_name("range-text-element");
-					sun_z_input_range_text.set_text_content(Some(scene.get().directional_light_angle[2].to_string().as_str()));
+                                    let mut scene_value = scene_clone.borrow_mut();
+                                    scene_value.directional_light_angle[1] =
+                                        value.parse::<f32>().unwrap();
 
-					{
-						let scene_clone: std::rc::Rc<std::cell::Cell<engine::update::Scene>> =
-							scene.clone();
-						let sun_range_z_closure: wasm_bindgen::prelude::Closure<dyn FnMut(_)> =
-							wasm_bindgen::closure::Closure::wrap(Box::new(
-								move |_event: web_sys::InputEvent| {
-									let range_z_element: web_sys::Element = gloo::utils::document()
-										.get_element_by_id("sun-range-z")
-										.unwrap();
-									let range_z_element: web_sys::HtmlInputElement =
-										range_z_element.dyn_into().unwrap();
-									let value: String = range_z_element.value();
-		
-									let mut scene_value: engine::update::Scene = scene_clone.get();
-									scene_value.directional_light_angle[2] = value.parse::<f32>().unwrap();
-									scene_clone.set(scene_value);
+                                    let range_y_text_element: web_sys::Element =
+                                        gloo::utils::document()
+                                            .get_element_by_id("sun-range-y-text")
+                                            .unwrap();
+                                    range_y_text_element.set_text_content(Some(&value));
+                                },
+                            )
+                                as Box<dyn FnMut(_)>);
 
-									let range_z_text_element: web_sys::Element = gloo::utils::document()
-									.get_element_by_id("sun-range-z-text")
-									.unwrap();
-									range_z_text_element.set_text_content(Some(&value));
-	
-								},
-							)
-								as Box<dyn FnMut(_)>);
-		
-							sun_z_input_range
-							.add_event_listener_with_callback(
-								"input",
-								sun_range_z_closure.as_ref().unchecked_ref(),
-							)
-							.unwrap();
-						sun_range_z_closure.forget();
-					}
+                        sun_y_input_range
+                            .add_event_listener_with_callback(
+                                "input",
+                                sun_range_y_closure.as_ref().unchecked_ref(),
+                            )
+                            .unwrap();
+                        sun_range_y_closure.forget();
+                    }
 
-					sun_z_content_element.append_child(&sun_z_input_range).unwrap();
-					sun_z_content_element.append_child(&sun_z_input_range_text).unwrap();
-				}
-				sun_z_element.append_child(&sun_z_label_element).unwrap();
-				sun_z_element
-					.append_child(&sun_z_content_element)
-					.unwrap();
+                    sun_y_content_element
+                        .append_child(&sun_y_input_range)
+                        .unwrap();
+                    sun_y_content_element
+                        .append_child(&sun_y_input_range_text)
+                        .unwrap();
+                }
+                sun_y_element.append_child(&sun_y_label_element).unwrap();
+                sun_y_element.append_child(&sun_y_content_element).unwrap();
 
-				sun_accordion_content_element
-					.append_child(&sun_z_element)
-					.unwrap();
-			}
+                sun_accordion_content_element
+                    .append_child(&sun_y_element)
+                    .unwrap();
+            }
+            // Z
+            {
+                let sun_z_element: web_sys::Element =
+                    gloo::utils::document().create_element("div").unwrap();
+                sun_z_element.set_class_name("widget-row");
 
-			accordion_content_element.append_child(&sun_accordion_input_element).unwrap();
-			accordion_content_element.append_child(&sun_accordion_label_element).unwrap();
-			accordion_content_element.append_child(&sun_accordion_content_element).unwrap();
+                let sun_z_label_element: web_sys::Element =
+                    gloo::utils::document().create_element("div").unwrap();
+                sun_z_label_element.set_class_name("widget-label");
+                sun_z_label_element.set_text_content(Some("Z"));
+
+                let sun_z_content_element = gloo::utils::document().create_element("div").unwrap();
+                sun_z_content_element.set_class_name("widget-value");
+
+                {
+                    let sun_z_input_range: web_sys::Element =
+                        gloo::utils::document().create_element("input").unwrap();
+                    let sun_z_input_range: web_sys::HtmlInputElement =
+                        sun_z_input_range.dyn_into().unwrap();
+                    sun_z_input_range.set_id("sun-range-z");
+                    sun_z_input_range.set_class_name("range-element");
+                    sun_z_input_range.set_attribute("type", "range").unwrap();
+                    sun_z_input_range.set_attribute("min", "-1.0").unwrap();
+                    sun_z_input_range.set_attribute("max", "1.0").unwrap();
+                    sun_z_input_range.set_attribute("step", "0.01").unwrap();
+                    sun_z_input_range
+                        .set_value(scene_value.directional_light_angle[2].to_string().as_str());
+
+                    let sun_z_input_range_text: web_sys::Element =
+                        gloo::utils::document().create_element("div").unwrap();
+                    sun_z_input_range_text.set_id("sun-range-z-text");
+                    sun_z_input_range_text.set_class_name("range-text-element");
+                    sun_z_input_range_text.set_text_content(Some(
+                        scene_value.directional_light_angle[2].to_string().as_str(),
+                    ));
+
+                    {
+                        let scene_clone: std::rc::Rc<std::cell::RefCell<engine::scene::Scene>> =
+                            scene.clone();
+
+                        let sun_range_z_closure: wasm_bindgen::prelude::Closure<dyn FnMut(_)> =
+                            wasm_bindgen::closure::Closure::wrap(Box::new(
+                                move |_event: web_sys::InputEvent| {
+                                    let range_z_element: web_sys::Element = gloo::utils::document()
+                                        .get_element_by_id("sun-range-z")
+                                        .unwrap();
+                                    let range_z_element: web_sys::HtmlInputElement =
+                                        range_z_element.dyn_into().unwrap();
+                                    let value: String = range_z_element.value();
+
+                                    let mut scene_value = scene_clone.borrow_mut();
+                                    scene_value.directional_light_angle[2] =
+                                        value.parse::<f32>().unwrap();
+
+                                    let range_z_text_element: web_sys::Element =
+                                        gloo::utils::document()
+                                            .get_element_by_id("sun-range-z-text")
+                                            .unwrap();
+                                    range_z_text_element.set_text_content(Some(&value));
+                                },
+                            )
+                                as Box<dyn FnMut(_)>);
+
+                        sun_z_input_range
+                            .add_event_listener_with_callback(
+                                "input",
+                                sun_range_z_closure.as_ref().unchecked_ref(),
+                            )
+                            .unwrap();
+                        sun_range_z_closure.forget();
+                    }
+
+                    sun_z_content_element
+                        .append_child(&sun_z_input_range)
+                        .unwrap();
+                    sun_z_content_element
+                        .append_child(&sun_z_input_range_text)
+                        .unwrap();
+                }
+                sun_z_element.append_child(&sun_z_label_element).unwrap();
+                sun_z_element.append_child(&sun_z_content_element).unwrap();
+
+                sun_accordion_content_element
+                    .append_child(&sun_z_element)
+                    .unwrap();
+            }
+
+            accordion_content_element
+                .append_child(&sun_accordion_input_element)
+                .unwrap();
+            accordion_content_element
+                .append_child(&sun_accordion_label_element)
+                .unwrap();
+            accordion_content_element
+                .append_child(&sun_accordion_content_element)
+                .unwrap();
         }
 
-        view_weather
-            .append_child(&accordion_input_element)
-            .unwrap();
-        view_weather
-            .append_child(&accordion_label_element)
-            .unwrap();
+        view_weather.append_child(&accordion_input_element).unwrap();
+        view_weather.append_child(&accordion_label_element).unwrap();
         view_weather
             .append_child(&accordion_content_element)
             .unwrap();
 
         view_wrapper.append_child(&view_weather).unwrap();
-	}
+    }
 
     // graphics view
     {
@@ -580,8 +609,9 @@ fn create_view_dialog(scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>
             render_type_option_forward.set_text_content(Some("forward"));
 
             {
-                let scene_clone: std::rc::Rc<std::cell::Cell<engine::update::Scene>> =
+                let scene_clone: std::rc::Rc<std::cell::RefCell<engine::scene::Scene>> =
                     scene.clone();
+
                 let render_type_closure: wasm_bindgen::prelude::Closure<dyn FnMut(_)> =
                     wasm_bindgen::closure::Closure::wrap(Box::new(
                         move |_event: web_sys::InputEvent| {
@@ -592,13 +622,12 @@ fn create_view_dialog(scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>
                                 render_type_element.dyn_into().unwrap();
                             let value: String = render_type_element.value();
 
-                            let mut scene_value: engine::update::Scene = scene_clone.get();
+                            let mut scene_value = scene_clone.borrow_mut();
                             match value.as_str() {
                                 "differed" => scene_value.render_type = 0,
                                 "forward" => scene_value.render_type = 1,
                                 _ => scene_value.render_type = 0,
                             }
-                            scene_clone.set(scene_value);
                         },
                     )
                         as Box<dyn FnMut(_)>);
@@ -650,7 +679,7 @@ fn create_view_dialog(scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>
                 .set_attribute("type", "color")
                 .unwrap();
             {
-                let bg_color: [f32; 4] = scene.get().background_color;
+                let bg_color: [f32; 4] = scene_value.background_color;
                 let r_uint: u32 = (bg_color[0] * 255.0) as u32;
                 let r_hex: String = format!("{r_uint:X}");
                 let g_uint: u32 = (bg_color[1] * 255.0) as u32;
@@ -665,8 +694,9 @@ fn create_view_dialog(scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>
             }
 
             {
-                let scene_clone: std::rc::Rc<std::cell::Cell<engine::update::Scene>> =
+                let scene_clone: std::rc::Rc<std::cell::RefCell<engine::scene::Scene>> =
                     scene.clone();
+
                 let bgcolor_picker_closure: wasm_bindgen::prelude::Closure<dyn FnMut(_)> =
                     wasm_bindgen::closure::Closure::wrap(Box::new(
                         move |_event: web_sys::InputEvent| {
@@ -681,14 +711,13 @@ fn create_view_dialog(scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>
                             let color_u8: [u8; 4] =
                                 u32::from_str_radix(&color_hex, 16).unwrap().to_be_bytes();
 
-                            let mut scene_value: engine::update::Scene = scene_clone.get();
+                            let mut scene_value = scene_clone.borrow_mut();
                             scene_value.background_color = [
                                 color_u8[1] as f32 / 256 as f32,
                                 color_u8[2] as f32 / 256 as f32,
                                 color_u8[3] as f32 / 256 as f32,
                                 1.0,
                             ];
-                            scene_clone.set(scene_value);
                         },
                     )
                         as Box<dyn FnMut(_)>);
@@ -741,8 +770,9 @@ fn create_view_dialog(scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>
             buffer_type_option_depth.set_text_content(Some("depth"));
 
             {
-                let scene_clone: std::rc::Rc<std::cell::Cell<engine::update::Scene>> =
+                let scene_clone: std::rc::Rc<std::cell::RefCell<engine::scene::Scene>> =
                     scene.clone();
+
                 let buffer_type_closure: wasm_bindgen::prelude::Closure<dyn FnMut(_)> =
                     wasm_bindgen::closure::Closure::wrap(Box::new(
                         move |_event: web_sys::InputEvent| {
@@ -753,14 +783,13 @@ fn create_view_dialog(scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>
                                 buffer_type_element.dyn_into().unwrap();
                             let value: String = buffer_type_element.value();
 
-                            let mut scene_value: engine::update::Scene = scene_clone.get();
+                            let mut scene_value = scene_clone.borrow_mut();
                             match value.as_str() {
                                 "render" => scene_value.differed_debug_type = 0,
                                 "normal" => scene_value.differed_debug_type = 1,
                                 "depth" => scene_value.differed_debug_type = 2,
                                 _ => scene_value.differed_debug_type = 0,
                             }
-                            scene_clone.set(scene_value);
                         },
                     )
                         as Box<dyn FnMut(_)>);

@@ -350,9 +350,9 @@ pub fn init_differed_gbuffers_shader(
 }
 
 pub fn upadte_differed_gbuffers_buffer(
-    scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>>,
+    scene: &std::rc::Rc<std::cell::RefCell<engine::scene::Scene>>,
     interface: &WebGPUInterface,
-    resource: &WebGPURenderResource,
+    object: &engine::scene::SceneObject,
 ) {
     let canvas: web_sys::Element = gloo::utils::document()
         .get_element_by_id(define::CANVAS_ELEMENT_ID)
@@ -362,18 +362,55 @@ pub fn upadte_differed_gbuffers_buffer(
     let height: u32 = canvas.client_height() as u32;
     let aspect_ratio: f32 = width as f32 / height as f32;
 
-    let eye: glam::Vec3 = scene.get().eye_location;
-    let direction: glam::Vec3 = scene.get().eye_direction;
+    let scene_value = scene.borrow();
+    let eye: glam::Vec3 = scene_value.eye_location;
+    let direction: glam::Vec3 = scene_value.eye_direction;
+
+    let mut model_matrix = glam::Mat4::from_cols_array_2d(&object.model_matrix);
+
+    if object.parent_index.is_some() {
+        let mut parent_index = *object.parent_index.as_ref().unwrap();
+        loop {
+            model_matrix = glam::Mat4::from_cols_array_2d(
+                &scene
+                    .borrow()
+                    .objects
+                    .get(parent_index as usize)
+                    .unwrap()
+                    .model_matrix,
+            ) * model_matrix;
+            let parent_option = scene
+                .borrow()
+                .objects
+                .get(parent_index as usize)
+                .unwrap()
+                .parent_index;
+            if parent_option.is_some() {
+                parent_index = parent_option.unwrap();
+                continue;
+            }
+            break;
+        }
+    }
+
+    //log::debug!("{}", model_matrix);
 
     // Create matrices and write buffer
     let view_matrix = glam::Mat4::look_to_rh(eye, direction, glam::Vec3::Z);
     let projection_matrix: glam::Mat4 =
         glam::Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, aspect_ratio, 0.01, 100.0);
-    let mx_total: glam::Mat4 = projection_matrix * view_matrix;
+    let mx_total: glam::Mat4 = projection_matrix * view_matrix * model_matrix;
     let mx_ref: &[f32; 16] = mx_total.as_ref();
-    interface
-        .queue
-        .write_buffer(&resource.uniform_buf, 0, bytemuck::cast_slice(mx_ref));
+    interface.queue.write_buffer(
+        &object
+            .render_resource
+            .as_ref()
+            .unwrap()
+            .borrow()
+            .uniform_buf,
+        0,
+        bytemuck::cast_slice(mx_ref),
+    );
 }
 
 struct DifferedUniform {
@@ -596,7 +633,7 @@ pub fn init_differed_shading(
 }
 
 pub fn update_differed_buffer(
-    scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>>,
+    scene: &std::rc::Rc<std::cell::RefCell<engine::scene::Scene>>,
     interface: &WebGPUInterface,
     resource: &WebGPUDifferedResource,
 ) {
@@ -608,8 +645,10 @@ pub fn update_differed_buffer(
     let height: u32 = canvas.client_height() as u32;
     let aspect_ratio: f32 = width as f32 / height as f32;
 
-    let eye: glam::Vec3 = scene.get().eye_location;
-    let direction: glam::Vec3 = scene.get().eye_direction;
+    let scene_value = scene.borrow();
+
+    let eye: glam::Vec3 = scene_value.eye_location;
+    let direction: glam::Vec3 = scene_value.eye_direction;
 
     // Create matrices and write buffer
     let view_matrix = glam::Mat4::look_to_rh(eye, direction, glam::Vec3::Z);
@@ -617,8 +656,8 @@ pub fn update_differed_buffer(
         glam::Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, aspect_ratio, 0.01, 100.0);
     let transform_matrix: glam::Mat4 = projection_matrix * view_matrix;
 
-    let directional: [f32; 3] = scene.get().directional_light_angle;
-    let ambient: [f32; 4] = scene.get().ambient_light_color;
+    let directional: [f32; 3] = scene_value.directional_light_angle;
+    let ambient: [f32; 4] = scene_value.ambient_light_color;
     let inverse_projection: glam::Mat4 = transform_matrix.inverse();
 
     let mut uniform_total: Vec<f32> = Vec::new();
@@ -626,7 +665,7 @@ pub fn update_differed_buffer(
     uniform_total.extend_from_slice(&[0.0]); // Padding!
     uniform_total.extend_from_slice(&ambient);
     uniform_total.extend_from_slice(&inverse_projection.to_cols_array().to_vec());
-    uniform_total.extend_from_slice(&[scene.get().differed_debug_type as f32, 0.0, 0.0, 0.0]);
+    uniform_total.extend_from_slice(&[scene_value.differed_debug_type as f32, 0.0, 0.0, 0.0]);
 
     let uniform_ref: &[f32] = uniform_total.as_ref();
     interface
@@ -790,7 +829,7 @@ pub fn init_color_shader(interface: &WebGPUInterface, mesh: &common::Mesh) -> We
 
 #[allow(dead_code)]
 pub fn update_color_buffer(
-    scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>>,
+    scene: &std::rc::Rc<std::cell::RefCell<engine::scene::Scene>>,
     interface: &WebGPUInterface,
     resource: &WebGPURenderResource,
 ) {
@@ -802,8 +841,10 @@ pub fn update_color_buffer(
     let height: u32 = canvas.client_height() as u32;
     let aspect_ratio: f32 = width as f32 / height as f32;
 
-    let eye: glam::Vec3 = scene.get().eye_location;
-    let direction: glam::Vec3 = scene.get().eye_direction;
+    let scene_value = scene.borrow();
+
+    let eye: glam::Vec3 = scene_value.eye_location;
+    let direction: glam::Vec3 = scene_value.eye_direction;
 
     // Create matrices and write buffer
     let view_matrix = glam::Mat4::look_to_rh(eye, direction, glam::Vec3::Z);
@@ -816,7 +857,7 @@ pub fn update_color_buffer(
         .write_buffer(&resource.uniform_buf, 0, bytemuck::cast_slice(mx_ref));
 }
 
-// Forward phong shader----------------------------------------------------------------------------
+// Forward phong shader ----------------------------------------------------------------------------
 
 #[allow(dead_code)]
 pub fn init_phong_shader(interface: &WebGPUInterface, mesh: &common::Mesh) -> WebGPURenderResource {
@@ -977,9 +1018,9 @@ pub fn init_phong_shader(interface: &WebGPUInterface, mesh: &common::Mesh) -> We
 
 #[allow(dead_code)]
 pub fn update_phong_buffer(
-    scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>>,
+    scene: &std::rc::Rc<std::cell::RefCell<engine::scene::Scene>>,
     interface: &WebGPUInterface,
-    resource: &WebGPURenderResource,
+    object: &engine::scene::SceneObject,
 ) {
     let canvas: web_sys::Element = gloo::utils::document()
         .get_element_by_id(define::CANVAS_ELEMENT_ID)
@@ -989,17 +1030,20 @@ pub fn update_phong_buffer(
     let height: u32 = canvas.client_height() as u32;
     let aspect_ratio: f32 = width as f32 / height as f32;
 
-    let eye: glam::Vec3 = scene.get().eye_location;
-    let direction: glam::Vec3 = scene.get().eye_direction;
+    let scene_value = scene.borrow();
+
+    let eye: glam::Vec3 = scene_value.eye_location;
+    let direction: glam::Vec3 = scene_value.eye_direction;
 
     // Create matrices and write buffer
+    let model_matrix = glam::Mat4::from_cols_array_2d(&object.model_matrix);
     let view_matrix = glam::Mat4::look_to_rh(eye, direction, glam::Vec3::Z);
     let projection_matrix: glam::Mat4 =
         glam::Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, aspect_ratio, 0.01, 100.0);
-    let transform_matrix: glam::Mat4 = projection_matrix * view_matrix;
+    let transform_matrix: glam::Mat4 = projection_matrix * view_matrix * model_matrix;
 
-    let directional: [f32; 3] = scene.get().directional_light_angle;
-    let ambient: [f32; 4] = scene.get().ambient_light_color;
+    let directional: [f32; 3] = scene_value.directional_light_angle;
+    let ambient: [f32; 4] = scene_value.ambient_light_color;
     let inverse_projection: glam::Mat4 = transform_matrix.inverse();
 
     let mut uniform_total: Vec<f32> = transform_matrix.to_cols_array().to_vec();
@@ -1009,17 +1053,86 @@ pub fn update_phong_buffer(
     uniform_total.extend_from_slice(&inverse_projection.to_cols_array().to_vec());
 
     let uniform_ref: &[f32] = uniform_total.as_ref();
-    interface
-        .queue
-        .write_buffer(&resource.uniform_buf, 0, bytemuck::cast_slice(uniform_ref));
+    interface.queue.write_buffer(
+        &object
+            .render_resource
+            .as_ref()
+            .unwrap()
+            .borrow()
+            .uniform_buf,
+        0,
+        bytemuck::cast_slice(uniform_ref),
+    );
 }
 
-// Render functions--------------------------------------------------------------------------------
+// Init function -----------------------------------------------------------------------------------
 
-pub fn render_forward_main(
+#[allow(dead_code)]
+pub fn init_forward_pipeline(
     interface: &WebGPUInterface,
-    scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>>,
-    resources: &Vec<WebGPURenderResource>,
+    scene: &std::rc::Rc<std::cell::RefCell<engine::scene::Scene>>,
+) {
+    for object in scene.borrow_mut().objects.iter_mut() {
+        if object.source_mesh.is_some() {
+            object.render_type = 1;
+            object.render_resource = Some(std::rc::Rc::new(std::cell::RefCell::new(
+                init_phong_shader(&interface, &object.source_mesh.as_ref().unwrap().borrow()),
+            )));
+        }
+    }
+}
+
+#[allow(dead_code)]
+pub fn init_differed_pipeline(
+    interface: &WebGPUInterface,
+    scene: &std::rc::Rc<std::cell::RefCell<engine::scene::Scene>>,
+) {
+    for object in scene.borrow_mut().objects.iter_mut() {
+        if object.source_mesh.is_some() {
+            object.render_type = 0;
+            object.render_resource = Some(std::rc::Rc::new(std::cell::RefCell::new(
+                init_differed_gbuffers_shader(
+                    &interface,
+                    &object.source_mesh.as_ref().unwrap().borrow(),
+                ),
+            )));
+        }
+    }
+}
+
+// Update functions --------------------------------------------------------------------------------
+
+pub fn update_forward_shading(
+    interface: &WebGPUInterface,
+    scene: &std::rc::Rc<std::cell::RefCell<engine::scene::Scene>>,
+) {
+    for scene_object in scene.borrow().objects.iter() {
+        if scene_object.render_type == 1 {
+            update_phong_buffer(&scene.clone(), &interface, &scene_object);
+        }
+    }
+}
+
+pub fn update_differed_shading(
+    interface: &WebGPUInterface,
+    scene: &std::rc::Rc<std::cell::RefCell<engine::scene::Scene>>,
+    differed_resource: &WebGPUDifferedResource,
+) {
+    // Update gbuffer
+    for scene_object in scene.borrow().objects.iter() {
+        if scene_object.render_type == 0 {
+            upadte_differed_gbuffers_buffer(&scene, &interface, &scene_object);
+        }
+    }
+    // Update differed
+    update_differed_buffer(&scene, &interface, &differed_resource);
+}
+
+// Render functions --------------------------------------------------------------------------------
+
+pub fn render_forward_shading_main(
+    interface: &WebGPUInterface,
+    scene: &std::rc::Rc<std::cell::RefCell<engine::scene::Scene>>,
 ) {
     let frame: wgpu::SurfaceTexture = interface
         .surface
@@ -1051,8 +1164,9 @@ pub fn render_forward_main(
                 label: Some("Forward render encoder"),
             });
 
-    // Forward main path
     {
+        let scene_value = scene.borrow();
+
         let mut rpass: wgpu::RenderPass<'_> =
             encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Forward render pass"),
@@ -1061,10 +1175,10 @@ pub fn render_forward_main(
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: scene.get().background_color[0] as f64,
-                            g: scene.get().background_color[1] as f64,
-                            b: scene.get().background_color[2] as f64,
-                            a: scene.get().background_color[3] as f64,
+                            r: scene_value.background_color[0] as f64,
+                            g: scene_value.background_color[1] as f64,
+                            b: scene_value.background_color[2] as f64,
+                            a: scene_value.background_color[3] as f64,
                         }),
                         store: wgpu::StoreOp::Store,
                     },
@@ -1081,12 +1195,52 @@ pub fn render_forward_main(
                 occlusion_query_set: None,
             });
 
-        for resource in resources {
-            rpass.set_pipeline(&resource.render_pipeline);
-            rpass.set_bind_group(0, &resource.bind_group, &[]);
-            rpass.set_index_buffer(resource.index_buf.slice(..), wgpu::IndexFormat::Uint32);
-            rpass.set_vertex_buffer(0, resource.vertex_buf.slice(..));
-            rpass.draw_indexed(0..resource.index_count, 0, 0..1);
+        for object in scene.borrow().objects.iter() {
+            if object.render_type == 1 {
+                rpass.set_pipeline(
+                    &object
+                        .render_resource
+                        .as_ref()
+                        .unwrap()
+                        .borrow()
+                        .render_pipeline,
+                );
+                rpass.set_bind_group(
+                    0,
+                    &object.render_resource.as_ref().unwrap().borrow().bind_group,
+                    &[],
+                );
+                rpass.set_index_buffer(
+                    object
+                        .render_resource
+                        .as_ref()
+                        .unwrap()
+                        .borrow()
+                        .index_buf
+                        .slice(..),
+                    wgpu::IndexFormat::Uint32,
+                );
+                rpass.set_vertex_buffer(
+                    0,
+                    object
+                        .render_resource
+                        .as_ref()
+                        .unwrap()
+                        .borrow()
+                        .vertex_buf
+                        .slice(..),
+                );
+                rpass.draw_indexed(
+                    0..object
+                        .render_resource
+                        .as_ref()
+                        .unwrap()
+                        .borrow()
+                        .index_count,
+                    0,
+                    0..1,
+                );
+            }
         }
     }
 
@@ -1094,11 +1248,10 @@ pub fn render_forward_main(
     frame.present();
 }
 
-pub fn render_differed_main(
+pub fn render_differed_shading_main(
     interface: &WebGPUInterface,
-    scene: &std::rc::Rc<std::cell::Cell<engine::update::Scene>>,
+    scene: &std::rc::Rc<std::cell::RefCell<engine::scene::Scene>>,
     gbuffer: &WebGPUDifferedGBuffer,
-    resources: &Vec<WebGPURenderResource>,
     differed_resource: &WebGPUDifferedResource,
 ) {
     let frame: wgpu::SurfaceTexture = interface
@@ -1168,17 +1321,59 @@ pub fn render_differed_main(
                 occlusion_query_set: None,
             });
 
-        for resource in resources {
-            gbuffer_pass.set_pipeline(&resource.render_pipeline);
-            gbuffer_pass.set_bind_group(0, &resource.bind_group, &[]);
-            gbuffer_pass.set_index_buffer(resource.index_buf.slice(..), wgpu::IndexFormat::Uint32);
-            gbuffer_pass.set_vertex_buffer(0, resource.vertex_buf.slice(..));
-            gbuffer_pass.draw_indexed(0..resource.index_count, 0, 0..1);
+        for object in scene.borrow().objects.iter() {
+            if object.render_type == 0 {
+                gbuffer_pass.set_pipeline(
+                    &object
+                        .render_resource
+                        .as_ref()
+                        .unwrap()
+                        .borrow()
+                        .render_pipeline,
+                );
+                gbuffer_pass.set_bind_group(
+                    0,
+                    &object.render_resource.as_ref().unwrap().borrow().bind_group,
+                    &[],
+                );
+                gbuffer_pass.set_index_buffer(
+                    object
+                        .render_resource
+                        .as_ref()
+                        .unwrap()
+                        .borrow()
+                        .index_buf
+                        .slice(..),
+                    wgpu::IndexFormat::Uint32,
+                );
+                gbuffer_pass.set_vertex_buffer(
+                    0,
+                    object
+                        .render_resource
+                        .as_ref()
+                        .unwrap()
+                        .borrow()
+                        .vertex_buf
+                        .slice(..),
+                );
+                gbuffer_pass.draw_indexed(
+                    0..object
+                        .render_resource
+                        .as_ref()
+                        .unwrap()
+                        .borrow()
+                        .index_count,
+                    0,
+                    0..1,
+                );
+            }
         }
     }
 
     // differed pass
     {
+        let scene_value = scene.borrow();
+
         let mut differed_pass: wgpu::RenderPass<'_> =
             encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Differed render pass"),
@@ -1187,10 +1382,10 @@ pub fn render_differed_main(
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: scene.get().background_color[0] as f64,
-                            g: scene.get().background_color[1] as f64,
-                            b: scene.get().background_color[2] as f64,
-                            a: scene.get().background_color[3] as f64,
+                            r: scene_value.background_color[0] as f64,
+                            g: scene_value.background_color[1] as f64,
+                            b: scene_value.background_color[2] as f64,
+                            a: scene_value.background_color[3] as f64,
                         }),
                         store: wgpu::StoreOp::Store,
                     },
@@ -1200,7 +1395,7 @@ pub fn render_differed_main(
                 occlusion_query_set: None,
             });
 
-        if scene.get().differed_debug_type == 0 {
+        if scene_value.differed_debug_type == 0 {
             differed_pass.set_pipeline(&differed_resource.render_pipeline);
         } else {
             differed_pass.set_pipeline(&differed_resource.debug_pipeline);

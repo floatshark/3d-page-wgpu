@@ -18,10 +18,12 @@ impl Vertex {
     }
 }
 
+#[derive(Clone, Default)]
 pub struct Mesh {
     pub _name: std::string::String,
     pub vertices: Vec<Vertex>,
     pub indices: Vec<u32>,
+    pub _matrix: [[f32; 4]; 4],
 }
 
 // -----------------------------------------------------------------------------
@@ -194,6 +196,7 @@ pub fn create_cube() -> Mesh {
         _name: "cube".to_string(),
         vertices: vertex_data.to_vec(),
         indices: index_data.to_vec(),
+        _matrix: glam::Mat4::IDENTITY.to_cols_array_2d(),
     }
 }
 

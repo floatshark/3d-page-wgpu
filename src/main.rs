@@ -14,84 +14,59 @@ pub async fn main() {
 
     log::debug!("Main");
 
-    // Javascript
-
-    let mouse_event_js: std::rc::Rc<
-        std::cell::Cell<frontend::eventlistener::MouseEventResponseJs>,
-    > = std::rc::Rc::new(std::cell::Cell::new(
-        frontend::eventlistener::MouseEventResponseJs::default(),
-    ));
-    frontend::eventlistener::add_event_listener_control(&mouse_event_js);
-
     // Scene
+    let mut scene: engine::scene::Scene = engine::scene::Scene::default();
+    scene.init();
+    let scene: std::rc::Rc<std::cell::RefCell<engine::scene::Scene>> =
+        std::rc::Rc::new(std::cell::RefCell::new(scene));
 
-    let scene: std::rc::Rc<std::cell::Cell<engine::update::Scene>> =
-        std::rc::Rc::new(std::cell::Cell::new(engine::update::Scene::get_init()));
+    // Mesh loading
+    scene.borrow_mut().objects =
+        engine::load::load_gltf_scene(engine::define::GLTF_BATHROOM_PATH).await;
 
-    // GUI
-
-    frontend::gui::start_gui(&scene);
-
-    // Model loading
-
-    let obj_meshes: Vec<rendering::common::Mesh> =
-        engine::load::load_obj(engine::define::OBJ_BUNNY_PATH).await;
-
-    // Rendering
-
+    // Rendering context
     let webgpu_interface: rendering::webgpu::WebGPUInterface =
         rendering::webgpu::init_interface().await;
     let gbuffers: rendering::webgpu::WebGPUDifferedGBuffer =
         rendering::webgpu::init_differed_gbuffer(&webgpu_interface);
-
-    let mut gbuffer_resources: Vec<rendering::webgpu::WebGPURenderResource> = Vec::new();
-    for obj_mesh in obj_meshes.iter() {
-        let gbuffer_resource: rendering::webgpu::WebGPURenderResource =
-            rendering::webgpu::init_differed_gbuffers_shader(&webgpu_interface, &obj_mesh);
-        gbuffer_resources.push(gbuffer_resource);
-    }
     let differed_resource: rendering::webgpu::WebGPUDifferedResource =
         rendering::webgpu::init_differed_shading(&webgpu_interface, &gbuffers);
+    rendering::webgpu::init_differed_pipeline(&webgpu_interface, &scene);
 
-    let mut webgpu_resources: Vec<rendering::webgpu::WebGPURenderResource> = Vec::new();
-    for obj_mesh in obj_meshes.iter() {
-        let webgpu_resource = rendering::webgpu::init_phong_shader(&webgpu_interface, &obj_mesh);
-        webgpu_resources.push(webgpu_resource);
-    }
+    // Javascript Control
+    let control_response_js: std::rc::Rc<
+        std::cell::RefCell<frontend::eventlistener::ControlResponseJs>,
+    > = std::rc::Rc::new(std::cell::RefCell::new(
+        frontend::eventlistener::ControlResponseJs::default(),
+    ));
+    frontend::eventlistener::add_event_listener_control(&control_response_js);
+
+    // Frontend GUI
+    frontend::gui::start_gui(&scene);
 
     // Loop
-
     let f: std::rc::Rc<_> = std::rc::Rc::new(std::cell::RefCell::new(None));
     let g: std::rc::Rc<std::cell::RefCell<Option<_>>> = f.clone();
     *g.borrow_mut() = Some(wasm_bindgen::closure::Closure::wrap(Box::new(move || {
-        engine::update::update_js(&scene, &mouse_event_js);
+        engine::scene::update_js(&scene, &control_response_js);
 
-        if scene.get().render_type == 0 {
-            for gbuffer_resource in gbuffer_resources.iter() {
-                rendering::webgpu::upadte_differed_gbuffers_buffer(
-                    &scene,
-                    &webgpu_interface,
-                    &gbuffer_resource,
-                );
-            }
-            rendering::webgpu::update_differed_buffer(
-                &scene,
+        let render_type = scene.borrow().render_type;
+
+        if render_type == 0 {
+            rendering::webgpu::update_differed_shading(
                 &webgpu_interface,
+                &scene,
                 &differed_resource,
             );
-
-            rendering::webgpu::render_differed_main(
+            rendering::webgpu::render_differed_shading_main(
                 &webgpu_interface,
                 &scene,
                 &gbuffers,
-                &gbuffer_resources,
                 &differed_resource,
             );
-        } else if scene.get().render_type == 1 {
-            for webgpu_resource in webgpu_resources.iter() {
-                rendering::webgpu::update_phong_buffer(&scene, &webgpu_interface, &webgpu_resource);
-            }
-            rendering::webgpu::render_forward_main(&webgpu_interface, &scene, &webgpu_resources);
+        } else if render_type == 1 {
+            rendering::webgpu::update_forward_shading(&webgpu_interface, &scene);
+            rendering::webgpu::render_forward_shading_main(&webgpu_interface, &scene);
         }
 
         request_animation_frame(f.borrow().as_ref().unwrap());
