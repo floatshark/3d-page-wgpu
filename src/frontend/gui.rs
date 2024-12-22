@@ -624,9 +624,15 @@ fn create_view_dialog(scene: &std::rc::Rc<std::cell::RefCell<engine::scene::Scen
 
                             let mut scene_value = scene_clone.borrow_mut();
                             match value.as_str() {
-                                "differed" => scene_value.render_type = 0,
-                                "forward" => scene_value.render_type = 1,
-                                _ => scene_value.render_type = 0,
+                                "differed" => {
+                                    scene_value.scene_shading_type =
+                                        engine::scene::ShadingType::Differed;
+                                }
+                                "forward" => {
+                                    scene_value.scene_shading_type =
+                                        engine::scene::ShadingType::Forward
+                                }
+                                _ => {}
                             }
                         },
                     )

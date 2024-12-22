@@ -86,19 +86,29 @@ pub async fn load_gltf_scene(file_name: &str) -> Vec<engine::scene::SceneObject>
     }
 
     let mut out: Vec<engine::scene::SceneObject> = Vec::new();
+    let mut num_node: u32 = 0;
+    let mut num_verts: u32 = 0;
+    let mut num_indices: u32 = 0;
 
     for _scene in gltf.scenes() {
         for node in gltf.nodes() {
-            log::debug!("Node : {}", node.name().unwrap());
+            //log::debug!("Node : {}", node.name().unwrap());
 
             let mut mesh: Option<rendering::common::Mesh> = None;
             if node.mesh().is_some() {
                 mesh = Some(get_gltf_mesh_from_node(&node, &buffer_data));
             }
 
+            // for log
+            num_node += 1;
+            if mesh.is_some() {
+                num_verts += mesh.as_ref().unwrap().vertices.len() as u32;
+                num_indices += mesh.as_ref().unwrap().indices.len() as u32;
+            }
+
             let mut scene_object = engine::scene::SceneObject {
                 _name: Some(node.name().unwrap().to_string()),
-                render_type: 44,
+                shading_type: 44,
                 model_matrix: node.transform().matrix(),
                 source_mesh: if mesh.is_some() {
                     Some(std::rc::Rc::new(std::cell::RefCell::new(mesh.unwrap())))
@@ -133,6 +143,13 @@ pub async fn load_gltf_scene(file_name: &str) -> Vec<engine::scene::SceneObject>
             object.parent_index = Some(parent.unwrap());
         }
     }
+
+    log::debug!(
+        "nodes : {}, verts : {}, tris : {}",
+        num_node,
+        num_verts,
+        num_indices / 3
+    );
 
     return out;
 }
@@ -258,11 +275,12 @@ fn get_gltf_mesh_from_node(
         mesh_vertices.append(&mut vertices);
         mesh_indices.append(&mut indices);
 
+        /*
         log::debug!(
             "Mesh : vertice {}, indices {}",
             mesh_vertices.len(),
             mesh_indices.len()
-        );
+        );*/
     }
 
     rendering::common::Mesh {

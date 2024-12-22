@@ -9,7 +9,7 @@ pub struct Scene {
     pub directional_light_angle: [f32; 3],
     pub ambient_light_color: [f32; 4],
     pub background_color: [f32; 4],
-    pub render_type: u8,
+    pub scene_shading_type: ShadingType,
     pub differed_debug_type: u8,
     pub objects: Vec<SceneObject>,
     pub instant_convert_y_to_z: bool,
@@ -25,7 +25,7 @@ impl Scene {
         self.directional_light_angle = [0.0, 0.0, -1.0];
         self.ambient_light_color = [0.2, 0.2, 0.2, 1.0];
         self.background_color = [0.7, 0.7, 0.7, 1.0];
-        self.render_type = 0;
+        self.scene_shading_type = ShadingType::Differed;
         self.differed_debug_type = 0;
         self.objects = Vec::new();
         self.instant_convert_y_to_z = true;
@@ -35,7 +35,7 @@ impl Scene {
 #[derive(Clone, Default)]
 pub struct SceneObject {
     pub _name: Option<std::string::String>,
-    pub render_type: u8,
+    pub shading_type: u8,
     pub model_matrix: [[f32; 4]; 4],
     pub source_mesh: Option<std::rc::Rc<std::cell::RefCell<rendering::common::Mesh>>>,
     pub render_resource:
@@ -43,6 +43,13 @@ pub struct SceneObject {
     pub index: u32,
     pub parent_index: Option<u32>,
     pub child_index: Vec<u32>,
+}
+#[derive(Clone, Copy, Default)]
+pub enum ShadingType {
+    #[default]
+    None,
+    Differed,
+    Forward,
 }
 
 // ---------------------------------------------------------------------------------------

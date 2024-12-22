@@ -131,8 +131,8 @@ pub fn init_forward_pipeline(
     scene: &std::rc::Rc<std::cell::RefCell<engine::scene::Scene>>,
 ) {
     for object in scene.borrow_mut().objects.iter_mut() {
-        if object.source_mesh.is_some() {
-            object.render_type = 1;
+        if object.shading_type != 1 && object.source_mesh.is_some() {
+            object.shading_type = 1;
             object.render_resource = Some(std::rc::Rc::new(std::cell::RefCell::new(
                 init_phong_shader(&interface, &object.source_mesh.as_ref().unwrap().borrow()),
             )));
@@ -145,8 +145,8 @@ pub fn init_differed_gbuffer_pipeline(
     scene: &std::rc::Rc<std::cell::RefCell<engine::scene::Scene>>,
 ) {
     for object in scene.borrow_mut().objects.iter_mut() {
-        if object.source_mesh.is_some() {
-            object.render_type = 0;
+        if object.shading_type != 0 && object.source_mesh.is_some() {
+            object.shading_type = 0;
             object.render_resource = Some(std::rc::Rc::new(std::cell::RefCell::new(
                 init_differed_gbuffers_shader(
                     &interface,
@@ -164,7 +164,7 @@ pub fn update_forward_shading(
     scene: &std::rc::Rc<std::cell::RefCell<engine::scene::Scene>>,
 ) {
     for scene_object in scene.borrow().objects.iter() {
-        if scene_object.render_type == 1 {
+        if scene_object.shading_type == 1 {
             update_phong_buffer(&scene.clone(), &interface, &scene_object);
         }
     }
@@ -177,7 +177,7 @@ pub fn update_differed_shading(
 ) {
     // Update gbuffer
     for scene_object in scene.borrow().objects.iter() {
-        if scene_object.render_type == 0 {
+        if scene_object.shading_type == 0 {
             update_differed_gbuffers_buffer(&scene, &interface, &scene_object);
         }
     }
@@ -253,7 +253,7 @@ pub fn render_forward_shading_main(
             });
 
         for object in scene.borrow().objects.iter() {
-            if object.render_type == 1 {
+            if object.shading_type == 1 {
                 rpass.set_pipeline(
                     &object
                         .render_resource
@@ -378,7 +378,7 @@ pub fn render_differed_shading_main(
             });
 
         for object in scene.borrow().objects.iter() {
-            if object.render_type == 0 {
+            if object.shading_type == 0 {
                 gbuffer_pass.set_pipeline(
                     &object
                         .render_resource
@@ -1087,13 +1087,14 @@ fn update_differed_gbuffers_buffer(
     let projection_matrix: glam::Mat4 =
         glam::Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, aspect_ratio, 0.01, 100.0);
 
-    let rotaton_matrix: glam::Mat4 = glam::Mat4::from_quat(model_matrix.to_scale_rotation_translation().1);
+    let rotaton_matrix: glam::Mat4 =
+        glam::Mat4::from_quat(model_matrix.to_scale_rotation_translation().1);
 
     let mut uniform_total = model_matrix.to_cols_array().to_vec();
     uniform_total.extend_from_slice(&view_matrix.to_cols_array());
     uniform_total.extend_from_slice(&projection_matrix.to_cols_array());
     uniform_total.extend_from_slice(&rotaton_matrix.to_cols_array());
-    let uniform_ref: &[f32]= uniform_total.as_ref();
+    let uniform_ref: &[f32] = uniform_total.as_ref();
     interface.queue.write_buffer(
         &object
             .render_resource
@@ -1106,9 +1107,7 @@ fn update_differed_gbuffers_buffer(
     );
 }
 
-pub fn init_differed_pipeline(
-    interface: &WebGPUInterface
-) -> WebGPUDifferedResource {
+pub fn init_differed_pipeline(interface: &WebGPUInterface) -> WebGPUDifferedResource {
     struct DifferedUniform {
         _directional_light: [f32; 4],
         _ambient_light: [f32; 4],
@@ -1174,7 +1173,7 @@ pub fn init_differed_pipeline(
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
-    
+
     // bindings
 
     let gbuffer_bind_group_layout: wgpu::BindGroupLayout = interface

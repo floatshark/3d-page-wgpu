@@ -29,7 +29,6 @@ pub async fn main() {
         rendering::webgpu::init_interface().await;
     let differed_resource: rendering::webgpu::WebGPUDifferedResource =
         rendering::webgpu::init_differed_pipeline(&webgpu_interface);
-    rendering::webgpu::init_differed_gbuffer_pipeline(&webgpu_interface, &scene);
 
     // Javascript Control
     let control_response_js: std::rc::Rc<
@@ -48,10 +47,11 @@ pub async fn main() {
     *g.borrow_mut() = Some(wasm_bindgen::closure::Closure::wrap(Box::new(move || {
         engine::scene::update_js(&scene, &control_response_js);
 
-        let render_type = scene.borrow().render_type;
+        let shading_type = scene.borrow().scene_shading_type;
 
-        match render_type {
-            0 => {
+        match shading_type {
+            engine::scene::ShadingType::Differed => {
+                rendering::webgpu::init_differed_gbuffer_pipeline(&webgpu_interface, &scene);
                 rendering::webgpu::update_differed_shading(
                     &webgpu_interface,
                     &scene,
@@ -63,7 +63,8 @@ pub async fn main() {
                     &differed_resource,
                 );
             }
-            1 => {
+            engine::scene::ShadingType::Forward => {
+                rendering::webgpu::init_forward_pipeline(&webgpu_interface, &scene);
                 rendering::webgpu::update_forward_shading(&webgpu_interface, &scene);
                 rendering::webgpu::render_forward_shading_main(&webgpu_interface, &scene);
             }
