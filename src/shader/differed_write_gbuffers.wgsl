@@ -8,7 +8,14 @@ struct FragmentOutput {
     @location(1) normal   : vec4<f32>,
 }
 
-@group(0) @binding(0) var<uniform> inTransform: mat4x4<f32>;
+struct Uniform {
+    model_matrix      : mat4x4<f32>,
+    view_matrix       : mat4x4<f32>,
+    projection_matrix : mat4x4<f32>,
+    rotation_matrix   : mat4x4<f32>,
+}
+
+@group(0) @binding(0) var<uniform> inUniform : Uniform;
 
 @vertex
 fn vs_main(
@@ -18,8 +25,8 @@ fn vs_main(
 {
     var output : VertexOutput;
 
-    output.position = inTransform * position;
-    output.normal   = normal;
+    output.position = inUniform.projection_matrix * inUniform.view_matrix * inUniform.model_matrix * position;
+    output.normal   = (inUniform.rotation_matrix * vec4(normal, 1.0)).xyz;
 
     return output;
 }

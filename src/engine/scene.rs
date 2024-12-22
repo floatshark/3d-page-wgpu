@@ -12,6 +12,7 @@ pub struct Scene {
     pub render_type: u8,
     pub differed_debug_type: u8,
     pub objects: Vec<SceneObject>,
+    pub instant_convert_y_to_z: bool,
 }
 impl Scene {
     pub fn init(&mut self) {
@@ -27,6 +28,7 @@ impl Scene {
         self.render_type = 0;
         self.differed_debug_type = 0;
         self.objects = Vec::new();
+        self.instant_convert_y_to_z = true;
     }
 }
 

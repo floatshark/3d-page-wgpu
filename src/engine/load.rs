@@ -269,7 +269,6 @@ fn get_gltf_mesh_from_node(
         _name: mesh.name().unwrap().to_string(),
         vertices: mesh_vertices,
         indices: mesh_indices,
-        _matrix: node.transform().matrix(),
     }
 }
 
@@ -309,7 +308,6 @@ pub async fn load_obj_single(file_name: &str) -> rendering::common::Mesh {
         _name: model.name.clone(),
         vertices: rendering::common::create_vertices_from_obj(&model, true),
         indices: rendering::common::create_indices_from_obj(&model, true),
-        _matrix: glam::Mat4::IDENTITY.to_cols_array_2d(),
     }
 }
 
@@ -353,7 +351,6 @@ pub async fn load_obj(file_name: &str) -> Vec<rendering::common::Mesh> {
             _name: model.name.clone(),
             vertices: rendering::common::create_vertices_from_obj(&model, true),
             indices: rendering::common::create_indices_from_obj(&model, true),
-            _matrix: glam::Mat4::IDENTITY.to_cols_array_2d(),
         });
     }
 

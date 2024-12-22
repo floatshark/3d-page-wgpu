@@ -48,26 +48,14 @@ fn fs_main( @builtin(position) coord : vec4f ) -> @location(0) vec4f
 
     var frag_color = diffuse * surface_color + specular * surface_color + ambient_light;
     return frag_color;
-
-    /*
-    normal.x = (normal.x + 1.0) * 0.5;
-    normal.y = (normal.y + 1.0) * 0.5;
-    normal.z = (normal.z + 1.0) * 0.5;
-
-    depth = (1.0 - depth) * 50.0;
-
-    //return position;
-    //return normal;
-    //return vec4(depth, 0.0, 0.0, 1.0);
-    */
 }
 
 @fragment
 fn fs_debug_main( @builtin(position) coord : vec4f ) -> @location(0) vec4f
 {
-    let position : vec4f = textureLoad( gbuffer_position, vec2i(floor(coord.xy)), 0 );
+    let position : vec4f     = textureLoad( gbuffer_position, vec2i(floor(coord.xy)), 0 );
     var normal   : vec3<f32> = textureLoad( gbuffer_normal, vec2i(floor(coord.xy)), 0 ).xyz;
-    var depth    : f32   = textureLoad( gbuffer_depth, vec2i(floor(coord.xy)), 0 );
+    var depth    : f32       = textureLoad( gbuffer_depth, vec2i(floor(coord.xy)), 0 );
 
     normal.x = (normal.x + 1.0) * 0.5;
     normal.y = (normal.y + 1.0) * 0.5;
