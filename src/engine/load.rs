@@ -1,3 +1,5 @@
+use image::GenericImageView;
+
 use crate::engine;
 use crate::rendering;
 
@@ -40,7 +42,7 @@ pub async fn load_binary(file_name: &str) -> anyhow::Result<Vec<u8>> {
                 .bytes()
                 .await?
                 .to_vec();
-            log::debug!("Load {} byte from {}", data.len(), file_name);
+            //log::debug!("Load {} byte from {}", data.len(), file_name);
         } else {
             let path = std::path::Path::new(env!("OUT_DIR"))
                 .join("res")
@@ -55,7 +57,12 @@ pub async fn load_binary(file_name: &str) -> anyhow::Result<Vec<u8>> {
 // .gltf
 
 #[allow(dead_code)]
-pub async fn load_gltf_scene(file_name: &str) -> Vec<engine::scene::SceneObject> {
+pub async fn load_gltf_scene(
+    file_name: &str,
+) -> (
+    Vec<engine::scene::SceneObject>,
+    Vec<engine::scene::SceneMaterial>,
+) {
     let gltf_text = load_string(file_name)
         .await
         .expect("Failed to parse .gltf file path string");
@@ -64,6 +71,9 @@ pub async fn load_gltf_scene(file_name: &str) -> Vec<engine::scene::SceneObject>
 
     let gltf: gltf::Gltf = gltf::Gltf::from_reader(gltf_reader).expect("Failed to read .gltf file");
     let mut buffer_data: Vec<Vec<u8>> = Vec::new();
+
+    let slash_num: usize = file_name.rfind("/").unwrap() + 1;
+    let folder_path = file_name.split_at(slash_num).0;
 
     for buffer in gltf.buffers() {
         match buffer.source() {
@@ -74,8 +84,6 @@ pub async fn load_gltf_scene(file_name: &str) -> Vec<engine::scene::SceneObject>
                 //};
             }
             gltf::buffer::Source::Uri(uri) => {
-                let slash_num: usize = file_name.rfind("/").unwrap() + 1;
-                let folder_path = file_name.split_at(slash_num).0;
                 let binary_path = folder_path.to_string() + uri;
                 let bin = load_binary(&binary_path.as_str())
                     .await
@@ -85,73 +93,136 @@ pub async fn load_gltf_scene(file_name: &str) -> Vec<engine::scene::SceneObject>
         }
     }
 
-    let mut out: Vec<engine::scene::SceneObject> = Vec::new();
+    let mut out_mesh: Vec<engine::scene::SceneObject> = Vec::new();
+    let mut out_material: Vec<engine::scene::SceneMaterial> = Vec::new();
+
+    // Debug only
     let mut num_node: u32 = 0;
     let mut num_verts: u32 = 0;
     let mut num_indices: u32 = 0;
 
-    for _scene in gltf.scenes() {
-        for node in gltf.nodes() {
-            //log::debug!("Node : {}", node.name().unwrap());
+    for node in gltf.nodes() {
+        //log::debug!("Node : {}", node.name().unwrap());
 
-            let mut mesh: Option<rendering::common::Mesh> = None;
-            if node.mesh().is_some() {
-                mesh = Some(get_gltf_mesh_from_node(&node, &buffer_data));
-            }
-
-            // for log
-            num_node += 1;
-            if mesh.is_some() {
-                num_verts += mesh.as_ref().unwrap().vertices.len() as u32;
-                num_indices += mesh.as_ref().unwrap().indices.len() as u32;
-            }
-
-            let mut scene_object = engine::scene::SceneObject {
-                _name: Some(node.name().unwrap().to_string()),
-                shading_type: 44,
-                model_matrix: node.transform().matrix(),
-                source_mesh: if mesh.is_some() {
-                    Some(std::rc::Rc::new(std::cell::RefCell::new(mesh.unwrap())))
-                } else {
-                    None
-                },
-                render_resource: None,
-                index: node.index() as u32,
-                ..Default::default()
-            };
-
-            for child in node.children().into_iter() {
-                scene_object.child_index.push(child.index() as u32);
-            }
-
-            out.push(scene_object);
+        let mut mesh: Option<rendering::common::Mesh> = None;
+        if node.mesh().is_some() {
+            mesh = Some(get_gltf_mesh_from_node(&node, &buffer_data));
         }
+
+        // Debug only
+        num_node += 1;
+        if mesh.is_some() {
+            num_verts += mesh.as_ref().unwrap().vertices.len() as u32;
+            num_indices += mesh.as_ref().unwrap().indices.len() as u32;
+        }
+
+        let mut scene_object = engine::scene::SceneObject {
+            _name: Some(node.name().unwrap().to_string()),
+            shading_type: 44,
+            model_matrix: node.transform().matrix(),
+            source_mesh: if mesh.is_some() {
+                Some(std::rc::Rc::new(std::cell::RefCell::new(mesh.unwrap())))
+            } else {
+                None
+            },
+            render_resource: None,
+            index: node.index() as u32,
+            ..Default::default()
+        };
+
+        for child in node.children().into_iter() {
+            scene_object.child_index.push(child.index() as u32);
+        }
+
+        out_mesh.push(scene_object);
     }
 
     // Build parent relation, parent is unique
-    let mut parent_vec: Vec<Option<u32>> = vec![None; out.len()];
-    for object in out.iter() {
-        for child in object.child_index.iter() {
-            let inner = parent_vec.get_mut(*child as usize).unwrap();
-            inner.replace(object.index);
+    let mut parent_vec: Vec<Option<u32>> = vec![None; out_mesh.len()];
+    {
+        for object in out_mesh.iter() {
+            for child in object.child_index.iter() {
+                let inner = parent_vec.get_mut(*child as usize).unwrap();
+                inner.replace(object.index);
+            }
+        }
+        for i in 0..parent_vec.len() {
+            let parent = parent_vec.get(i).unwrap();
+            if parent.is_some() {
+                let object = out_mesh.get_mut(i).unwrap();
+                object.parent_index = Some(parent.unwrap());
+            }
         }
     }
-    for i in 0..parent_vec.len() {
-        let parent = parent_vec.get(i).unwrap();
-        if parent.is_some() {
-            let object = out.get_mut(i).unwrap();
-            object.parent_index = Some(parent.unwrap());
+
+    for material in gltf.materials() {
+        let pbr = material.pbr_metallic_roughness();
+
+        let mut base_color_texture_data: Vec<u8> = Vec::new();
+        if pbr.base_color_texture().is_some() {
+            let texture_source = &pbr
+                .base_color_texture()
+                .map(|tex| {
+                    // println!("Grabbing diffuse tex");
+                    // dbg!(&tex.texture().source());
+                    tex.texture().source().source()
+                })
+                .expect("texture");
+
+            match texture_source {
+                gltf::image::Source::View { view, mime_type: _ } => {
+                    base_color_texture_data = buffer_data[view.buffer().index()].clone();
+                }
+                gltf::image::Source::Uri { uri, mime_type: _ } => {
+                    let texture_path = folder_path.to_string() + uri;
+                    base_color_texture_data = load_binary(&texture_path)
+                        .await
+                        .expect("Faile to load texture");
+                }
+            };
         }
+
+        let base_color_image = if base_color_texture_data.len() > 0 {
+            Some(
+                image::load_from_memory_with_format(
+                    &base_color_texture_data,
+                    image::ImageFormat::Png,
+                )
+                .unwrap(),
+            )
+        } else {
+            None
+        };
+
+        let base_color_image_rgba8 = if base_color_image.is_some() {
+            Some(base_color_image.as_ref().unwrap().to_rgba8())
+        } else {
+            None
+        };
+
+        if base_color_image_rgba8.is_some() {
+            log::debug!("{}", base_color_image.as_ref().unwrap().dimensions().0);
+        }
+
+        let scene_material = engine::scene::SceneMaterial {
+            _name: Some(material.name().unwrap().to_string()),
+            base_color_texture_raw: base_color_texture_data,
+            base_color_image: base_color_image,
+            base_color_image_rgba8: base_color_image_rgba8,
+        };
+
+        out_material.push(scene_material);
     }
 
     log::debug!(
-        "nodes : {}, verts : {}, tris : {}",
+        "nodes : {}\n verts : {},\n tris  : {},\n mat   : {}",
         num_node,
         num_verts,
-        num_indices / 3
+        num_indices / 3,
+        out_material.len()
     );
 
-    return out;
+    return (out_mesh, out_material);
 }
 
 #[allow(dead_code)]
@@ -205,13 +276,14 @@ fn get_gltf_mesh_from_node(
     node: &gltf::Node<'_>,
     buffer_data: &Vec<Vec<u8>>,
 ) -> rendering::common::Mesh {
-    let mesh = node.mesh().expect("Got mesh");
+    let mesh: gltf::Mesh<'_> = node.mesh().expect("Got mesh");
+
     let mut mesh_vertices: Vec<rendering::common::Vertex> = Vec::new();
     let mut mesh_indices: Vec<u32> = Vec::new();
+    let mut mesh_material: Option<u32> = None;
 
     for primitive in mesh.primitives() {
         let reader = primitive.reader(|buffer| Some(&buffer_data[buffer.index()]));
-
         if reader.read_positions().is_none() {
             continue;
         }
@@ -267,6 +339,7 @@ fn get_gltf_mesh_from_node(
                 },
             ));
         }
+
         let mut indices = {
             let iter = reader.read_indices().unwrap().into_u32();
             iter.collect::<Vec<_>>()
@@ -274,6 +347,11 @@ fn get_gltf_mesh_from_node(
 
         mesh_vertices.append(&mut vertices);
         mesh_indices.append(&mut indices);
+        mesh_material = if primitive.material().index().is_some() {
+            Some(primitive.material().index().unwrap() as u32)
+        } else {
+            mesh_material
+        };
 
         /*
         log::debug!(
@@ -287,6 +365,7 @@ fn get_gltf_mesh_from_node(
         _name: mesh.name().unwrap().to_string(),
         vertices: mesh_vertices,
         indices: mesh_indices,
+        material: mesh_material,
     }
 }
 
@@ -326,6 +405,7 @@ pub async fn load_obj_single(file_name: &str) -> rendering::common::Mesh {
         _name: model.name.clone(),
         vertices: rendering::common::create_vertices_from_obj(&model, true),
         indices: rendering::common::create_indices_from_obj(&model, true),
+        material: None,
     }
 }
 
@@ -369,6 +449,7 @@ pub async fn load_obj(file_name: &str) -> Vec<rendering::common::Mesh> {
             _name: model.name.clone(),
             vertices: rendering::common::create_vertices_from_obj(&model, true),
             indices: rendering::common::create_indices_from_obj(&model, true),
+            material: None,
         });
     }
 

@@ -1,6 +1,7 @@
 use crate::engine::{self, define};
 use crate::rendering::common;
 
+use image::GenericImageView;
 use wasm_bindgen::JsCast;
 use wgpu::util::DeviceExt;
 use wgpu::TextureViewDescriptor;
@@ -24,6 +25,7 @@ pub struct WebGPURenderResource {
     pub index_count: u32,
     pub bind_group: wgpu::BindGroup,
     pub _bind_group_layout: wgpu::BindGroupLayout,
+    pub bind_group_2: Option<wgpu::BindGroup>,
     pub uniform_buf: wgpu::Buffer,
     pub render_pipeline: wgpu::RenderPipeline,
 }
@@ -32,6 +34,7 @@ pub struct WebGPUDifferedResource {
     pub _shader: wgpu::ShaderModule,
     gbuffer_position_texture: wgpu::Texture,
     gbuffer_normal_texture: wgpu::Texture,
+    gbuffer_albedo_texture: wgpu::Texture,
     pub bind_groups: Vec<wgpu::BindGroup>,
     pub uniform_buf: wgpu::Buffer,
     pub render_pipeline: wgpu::RenderPipeline,
@@ -134,7 +137,7 @@ pub fn init_forward_pipeline(
         if object.shading_type != 1 && object.source_mesh.is_some() {
             object.shading_type = 1;
             object.render_resource = Some(std::rc::Rc::new(std::cell::RefCell::new(
-                init_phong_shader(&interface, &object.source_mesh.as_ref().unwrap().borrow()),
+                init_phong_shading(&interface, &object.source_mesh.as_ref().unwrap().borrow()),
             )));
         }
     }
@@ -144,16 +147,39 @@ pub fn init_differed_gbuffer_pipeline(
     interface: &WebGPUInterface,
     scene: &std::rc::Rc<std::cell::RefCell<engine::scene::Scene>>,
 ) {
-    for object in scene.borrow_mut().objects.iter_mut() {
-        if object.shading_type != 0 && object.source_mesh.is_some() {
-            object.shading_type = 0;
-            object.render_resource = Some(std::rc::Rc::new(std::cell::RefCell::new(
-                init_differed_gbuffers_shader(
-                    &interface,
-                    &object.source_mesh.as_ref().unwrap().borrow(),
-                ),
-            )));
+    struct InitMap {
+        index: usize,
+        resource: WebGPURenderResource,
+    }
+
+    // Correct object need initialize pipeline
+    let mut init_list: Vec<InitMap> = Vec::new();
+    {
+        let scene_borrow = scene.borrow();
+        let scene_mterials = &scene_borrow.materials;
+        for i in 0..scene_borrow.objects.len() {
+            let object_borrow = scene_borrow.objects.get(i).unwrap();
+            if object_borrow.shading_type != 0 && object_borrow.source_mesh.is_some() {
+                init_list.push(InitMap {
+                    index: i,
+                    resource: init_differed_gbuffers_shading(
+                        &interface,
+                        &object_borrow.source_mesh.as_ref().unwrap().borrow(),
+                        &scene_mterials,
+                    ),
+                });
+            }
         }
+    }
+
+    // Initialize pipeline
+    for init_elem in init_list {
+        let mut scene_borrow = scene.borrow_mut();
+        let object_borrow = scene_borrow.objects.get_mut(init_elem.index).unwrap();
+        object_borrow.shading_type = 0;
+        object_borrow.render_resource = Some(std::rc::Rc::new(std::cell::RefCell::new(
+            init_elem.resource,
+        )));
     }
 }
 
@@ -165,7 +191,7 @@ pub fn update_forward_shading(
 ) {
     for scene_object in scene.borrow().objects.iter() {
         if scene_object.shading_type == 1 {
-            update_phong_buffer(&scene.clone(), &interface, &scene_object);
+            update_phong_shading(&scene.clone(), &interface, &scene_object);
         }
     }
 }
@@ -176,9 +202,9 @@ pub fn update_differed_shading(
     differed_resource: &WebGPUDifferedResource,
 ) {
     // Update gbuffer
-    for scene_object in scene.borrow().objects.iter() {
+    for scene_object in &scene.as_ref().borrow().objects {
         if scene_object.shading_type == 0 {
-            update_differed_gbuffers_buffer(&scene, &interface, &scene_object);
+            update_differed_gbuffers_shading(&scene, &interface, &scene_object);
         }
     }
     // Update differed
@@ -362,6 +388,21 @@ pub fn render_differed_shading_main(
                             store: wgpu::StoreOp::Store,
                         },
                     }),
+                    Some(wgpu::RenderPassColorAttachment {
+                        view: &differed_resource
+                            .gbuffer_albedo_texture
+                            .create_view(&TextureViewDescriptor::default()),
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color {
+                                r: 0.0,
+                                g: 0.0,
+                                b: 0.0,
+                                a: 1.0,
+                            }),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    }),
                 ],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &interface
@@ -392,6 +433,25 @@ pub fn render_differed_shading_main(
                     &object.render_resource.as_ref().unwrap().borrow().bind_group,
                     &[],
                 );
+                if object
+                    .render_resource
+                    .as_ref()
+                    .unwrap()
+                    .borrow()
+                    .bind_group_2
+                    .is_some()
+                {
+                    gbuffer_pass.set_bind_group(
+                        1,
+                        &object
+                            .render_resource
+                            .as_ref()
+                            .unwrap()
+                            .borrow()
+                            .bind_group_2,
+                        &[],
+                    );
+                }
                 gbuffer_pass.set_index_buffer(
                     object
                         .render_resource
@@ -469,7 +529,7 @@ pub fn render_differed_shading_main(
 // Forward shading --------------------------------------------------------------------
 
 #[allow(dead_code)]
-fn init_color_shader(interface: &WebGPUInterface, mesh: &common::Mesh) -> WebGPURenderResource {
+fn init_color_shading(interface: &WebGPUInterface, mesh: &common::Mesh) -> WebGPURenderResource {
     let shader: wgpu::ShaderModule =
         interface
             .device
@@ -613,6 +673,7 @@ fn init_color_shader(interface: &WebGPUInterface, mesh: &common::Mesh) -> WebGPU
         index_count,
         bind_group,
         _bind_group_layout: bind_group_layout,
+        bind_group_2: None,
         uniform_buf,
         render_pipeline,
     };
@@ -621,7 +682,7 @@ fn init_color_shader(interface: &WebGPUInterface, mesh: &common::Mesh) -> WebGPU
 }
 
 #[allow(dead_code)]
-fn update_color_buffer(
+fn update_color_shading(
     scene: &std::rc::Rc<std::cell::RefCell<engine::scene::Scene>>,
     interface: &WebGPUInterface,
     resource: &WebGPURenderResource,
@@ -651,7 +712,7 @@ fn update_color_buffer(
 }
 
 #[allow(dead_code)]
-fn init_phong_shader(interface: &WebGPUInterface, mesh: &common::Mesh) -> WebGPURenderResource {
+fn init_phong_shading(interface: &WebGPUInterface, mesh: &common::Mesh) -> WebGPURenderResource {
     struct PhongUniform {
         transform_matrix: [f32; 16],
         directional_light: [f32; 4],
@@ -800,6 +861,7 @@ fn init_phong_shader(interface: &WebGPUInterface, mesh: &common::Mesh) -> WebGPU
         index_count,
         bind_group,
         _bind_group_layout: bind_group_layout,
+        bind_group_2: None,
         uniform_buf,
         render_pipeline,
     };
@@ -808,7 +870,7 @@ fn init_phong_shader(interface: &WebGPUInterface, mesh: &common::Mesh) -> WebGPU
 }
 
 #[allow(dead_code)]
-fn update_phong_buffer(
+fn update_phong_shading(
     scene: &std::rc::Rc<std::cell::RefCell<engine::scene::Scene>>,
     interface: &WebGPUInterface,
     object: &engine::scene::SceneObject,
@@ -858,9 +920,10 @@ fn update_phong_buffer(
 
 // Differed shading -----------------------------------------------------------------------------
 
-fn init_differed_gbuffers_shader(
+fn init_differed_gbuffers_shading(
     interface: &WebGPUInterface,
     mesh: &common::Mesh,
+    materials: &Vec<engine::scene::SceneMaterial>,
 ) -> WebGPURenderResource {
     struct WriteGBuffersUniform {
         _model_matrix: [f32; 16],
@@ -901,6 +964,105 @@ fn init_differed_gbuffers_shader(
                 usage: wgpu::BufferUsages::INDEX,
             });
 
+    // Textures
+    let base_color_texture_data = &materials
+        .get(mesh.material.unwrap() as usize)
+        .unwrap()
+        .base_color_texture_raw;
+    let base_color_is_valid: bool = base_color_texture_data.len() > 0;
+    let mut base_color_texture_width: u32 = 1;
+    let mut base_color_texture_height: u32 = 1;
+
+    if base_color_is_valid {
+        base_color_texture_width = ((base_color_texture_data[16] as u32) << 24)
+            + ((base_color_texture_data[17] as u32) << 16)
+            + ((base_color_texture_data[18] as u32) << 8)
+            + ((base_color_texture_data[19] as u32) << 0);
+        base_color_texture_height = ((base_color_texture_data[20] as u32) << 24)
+            + ((base_color_texture_data[21] as u32) << 16)
+            + ((base_color_texture_data[22] as u32) << 8)
+            + ((base_color_texture_data[23] as u32) << 0);
+    }
+
+    let base_color_texture: wgpu::Texture =
+        interface.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("base color texture"),
+            size: wgpu::Extent3d {
+                width: base_color_texture_width,
+                height: base_color_texture_height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+
+    // Support .png format
+    if base_color_is_valid {
+        let base_color_image_rgba = &materials
+            .get(mesh.material.unwrap() as usize)
+            .unwrap()
+            .base_color_image_rgba8
+            .as_ref()
+            .unwrap();
+
+        interface.queue.write_texture(
+            wgpu::ImageCopyTexture {
+                aspect: wgpu::TextureAspect::All,
+                texture: &base_color_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+            },
+            &base_color_image_rgba,
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(4 * base_color_texture_width),
+                rows_per_image: Some(base_color_texture_height),
+            },
+            wgpu::Extent3d {
+                width: base_color_texture_width,
+                height: base_color_texture_height,
+                depth_or_array_layers: 1,
+            },
+        );
+    } else {
+        interface.queue.write_texture(
+            wgpu::ImageCopyTexture {
+                aspect: wgpu::TextureAspect::All,
+                texture: &base_color_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+            },
+            &[255, 255, 255, 255],
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(4),
+                rows_per_image: Some(1),
+            },
+            wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+        );
+    }
+
+    let base_color_texture_view: wgpu::TextureView =
+        base_color_texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let base_color_texture_sampler: wgpu::Sampler =
+        interface.device.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+
     // bindings
 
     let uniform_size: u64 = std::mem::size_of::<WriteGBuffersUniform>() as u64;
@@ -911,34 +1073,75 @@ fn init_differed_gbuffers_shader(
         mapped_at_creation: false,
     });
 
-    let bind_group_layout: wgpu::BindGroupLayout =
-        interface
-            .device
-            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: None,
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
-            });
+    let uniform_bind_group_layout: wgpu::BindGroupLayout = interface
+        .device
+        .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: None,
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
 
-    let bind_group: wgpu::BindGroup =
+    let uniform_bind_group: wgpu::BindGroup =
         interface
             .device
             .create_bind_group(&wgpu::BindGroupDescriptor {
-                layout: &bind_group_layout,
+                layout: &uniform_bind_group_layout,
                 entries: &[wgpu::BindGroupEntry {
                     binding: 0,
                     resource: uniform_buf.as_entire_binding(),
                 }],
                 label: Some("Bind group 0"),
             });
+
+    let texture_bind_group_layout =
+        interface
+            .device
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+                label: Some("texture_bind_group_layout"),
+            });
+
+    let texture_bind_group = interface
+        .device
+        .create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&base_color_texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&base_color_texture_sampler),
+                },
+            ],
+            label: Some("texture_bind_group"),
+        });
 
     // pipeline
 
@@ -947,7 +1150,7 @@ fn init_differed_gbuffers_shader(
             .device
             .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: None,
-                bind_group_layouts: &[&bind_group_layout],
+                bind_group_layouts: &[&uniform_bind_group_layout, &texture_bind_group_layout],
                 push_constant_ranges: &[],
             });
 
@@ -964,6 +1167,11 @@ fn init_differed_gbuffers_shader(
                 format: wgpu::VertexFormat::Float32x3,
                 offset: std::mem::size_of::<[f32; 9]>() as u64,
                 shader_location: 1,
+            },
+            wgpu::VertexAttribute {
+                format: wgpu::VertexFormat::Float32x3,
+                offset: std::mem::size_of::<[f32; 7]>() as u64,
+                shader_location: 2,
             },
         ],
     }];
@@ -985,6 +1193,11 @@ fn init_differed_gbuffers_shader(
                     entry_point: Some(define::FS_ENTRY_POINT),
                     compilation_options: Default::default(),
                     targets: &[
+                        Some(wgpu::ColorTargetState {
+                            format: wgpu::TextureFormat::Rgba16Float,
+                            blend: None,
+                            write_mask: wgpu::ColorWrites::all(),
+                        }),
                         Some(wgpu::ColorTargetState {
                             format: wgpu::TextureFormat::Rgba16Float,
                             blend: None,
@@ -1021,8 +1234,9 @@ fn init_differed_gbuffers_shader(
         vertex_buf,
         index_buf,
         index_count,
-        bind_group,
-        _bind_group_layout: bind_group_layout,
+        bind_group: uniform_bind_group,
+        _bind_group_layout: uniform_bind_group_layout,
+        bind_group_2: Some(texture_bind_group),
         uniform_buf,
         render_pipeline,
     };
@@ -1030,7 +1244,7 @@ fn init_differed_gbuffers_shader(
     return render_resource;
 }
 
-fn update_differed_gbuffers_buffer(
+fn update_differed_gbuffers_shading(
     scene: &std::rc::Rc<std::cell::RefCell<engine::scene::Scene>>,
     interface: &WebGPUInterface,
     object: &engine::scene::SceneObject,
@@ -1174,6 +1388,22 @@ pub fn init_differed_pipeline(interface: &WebGPUInterface) -> WebGPUDifferedReso
             view_formats: &[],
         });
 
+    let gbuffer_albedo_texture: wgpu::Texture =
+        interface.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("albedo texture"),
+            size: wgpu::Extent3d {
+                width: width,
+                height: height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba16Float,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+
     // bindings
 
     let gbuffer_bind_group_layout: wgpu::BindGroupLayout = interface
@@ -1211,6 +1441,16 @@ pub fn init_differed_pipeline(interface: &WebGPUInterface) -> WebGPUDifferedReso
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -1239,6 +1479,13 @@ pub fn init_differed_pipeline(interface: &WebGPUInterface) -> WebGPUDifferedReso
                         resource: wgpu::BindingResource::TextureView(
                             &interface
                                 .depth_texture
+                                .create_view(&wgpu::TextureViewDescriptor::default()),
+                        ),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: wgpu::BindingResource::TextureView(
+                            &gbuffer_albedo_texture
                                 .create_view(&wgpu::TextureViewDescriptor::default()),
                         ),
                     },
@@ -1359,6 +1606,7 @@ pub fn init_differed_pipeline(interface: &WebGPUInterface) -> WebGPUDifferedReso
         _shader: shader,
         gbuffer_position_texture,
         gbuffer_normal_texture,
+        gbuffer_albedo_texture,
         bind_groups,
         uniform_buf,
         render_pipeline,

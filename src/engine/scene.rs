@@ -13,6 +13,7 @@ pub struct Scene {
     pub differed_debug_type: u8,
     pub objects: Vec<SceneObject>,
     pub instant_convert_y_to_z: bool,
+    pub materials: Vec<SceneMaterial>,
 }
 impl Scene {
     pub fn init(&mut self) {
@@ -43,6 +44,14 @@ pub struct SceneObject {
     pub index: u32,
     pub parent_index: Option<u32>,
     pub child_index: Vec<u32>,
+    //pub material_index: Option<u32>,
+}
+#[derive(Clone, Default)]
+pub struct SceneMaterial {
+    pub _name: Option<std::string::String>,
+    pub base_color_texture_raw: Vec<u8>,
+    pub base_color_image: Option<image::DynamicImage>,
+    pub base_color_image_rgba8: Option<image::ImageBuffer<image::Rgba<u8>, Vec<u8>>>,
 }
 #[derive(Clone, Copy, Default)]
 pub enum ShadingType {

@@ -20,8 +20,8 @@ pub async fn main() {
     let scene: std::rc::Rc<std::cell::RefCell<engine::scene::Scene>> =
         std::rc::Rc::new(std::cell::RefCell::new(scene));
 
-    // Mesh loading
-    scene.borrow_mut().objects =
+    // Loading
+    (scene.borrow_mut().objects, scene.borrow_mut().materials) =
         engine::load::load_gltf_scene(engine::define::GLTF_BATHROOM_PATH).await;
 
     // Rendering context
@@ -47,7 +47,7 @@ pub async fn main() {
     *g.borrow_mut() = Some(wasm_bindgen::closure::Closure::wrap(Box::new(move || {
         engine::scene::update_js(&scene, &control_response_js);
 
-        let shading_type = scene.borrow().scene_shading_type;
+        let shading_type: engine::scene::ShadingType = scene.borrow().scene_shading_type;
 
         match shading_type {
             engine::scene::ShadingType::Differed => {

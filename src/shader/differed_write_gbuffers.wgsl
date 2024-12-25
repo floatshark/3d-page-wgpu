@@ -1,11 +1,13 @@
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
 	@location(0)       normal  : vec3<f32>,
+    @location(1)       uv      : vec2<f32>,
 };
 
 struct FragmentOutput {
     @location(0) position : vec4<f32>,
     @location(1) normal   : vec4<f32>,
+    @location(2) albedo   : vec4<f32>,
 }
 
 struct Uniform {
@@ -16,17 +18,21 @@ struct Uniform {
 }
 
 @group(0) @binding(0) var<uniform> inUniform : Uniform;
+@group(1) @binding(0) var base_color_texture : texture_2d<f32>;
+@group(1) @binding(1) var base_color_sampler : sampler;
 
 @vertex
 fn vs_main(
     @location(0) position : vec4<f32>,
-    @location(1) normal   : vec3<f32>
+    @location(1) normal   : vec3<f32>,
+    @location(2) uv       : vec2<f32>,
 ) -> VertexOutput 
 {
     var output : VertexOutput;
 
     output.position = inUniform.projection_matrix * inUniform.view_matrix * inUniform.model_matrix * position;
     output.normal   = (inUniform.rotation_matrix * vec4(normal, 1.0)).xyz;
+    output.uv       = uv;
 
     return output;
 }
@@ -38,6 +44,7 @@ fn fs_main(vertex: VertexOutput) -> FragmentOutput
 
     output.position = vertex.position;
     output.normal   = vec4(normalize(vertex.normal), 1.0);
+    output.albedo   = textureSample(base_color_texture, base_color_sampler, vertex.uv);
 
     return output;
 }

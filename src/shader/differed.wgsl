@@ -20,14 +20,16 @@ struct Uniform
 @group(0) @binding(0) var gbuffer_position : texture_2d<f32>;
 @group(0) @binding(1) var gbuffer_normal   : texture_2d<f32>;
 @group(0) @binding(2) var gbuffer_depth    : texture_depth_2d;
+@group(0) @binding(3) var gbuffer_albedo   : texture_2d<f32>;
 @group(1) @binding(0) var<uniform> inUniform: Uniform;
 
 @fragment
 fn fs_main( @builtin(position) coord : vec4f ) -> @location(0) vec4f
 {
-    let position : vec4f = textureLoad( gbuffer_position, vec2i(floor(coord.xy)), 0 );
+    let position : vec4f     = textureLoad( gbuffer_position, vec2i(floor(coord.xy)), 0 );
     var normal   : vec3<f32> = textureLoad( gbuffer_normal, vec2i(floor(coord.xy)), 0 ).xyz;
-    var depth    : f32   = textureLoad( gbuffer_depth, vec2i(floor(coord.xy)), 0 );
+    var depth    : f32       = textureLoad( gbuffer_depth, vec2i(floor(coord.xy)), 0 );
+    var albedo   : vec4<f32> = textureLoad( gbuffer_albedo, vec2i(floor(coord.xy)), 0 );
 
     if (depth >= 1.0) 
     {
@@ -43,7 +45,7 @@ fn fs_main( @builtin(position) coord : vec4f ) -> @location(0) vec4f
 
     let ambient_light     : vec4<f32> = inUniform.ambient_light;
 
-    let surface_color  : vec4<f32> = vec4(0.5, 0.5, 0.5, 1.0);
+    let surface_color  : vec4<f32> = albedo;
     let specular_color : vec4<f32> = vec4(1.0, 1.0, 1.0, 1.0);
 
     var frag_color = diffuse * surface_color + specular * surface_color + ambient_light;
@@ -56,6 +58,7 @@ fn fs_debug_main( @builtin(position) coord : vec4f ) -> @location(0) vec4f
     let position : vec4f     = textureLoad( gbuffer_position, vec2i(floor(coord.xy)), 0 );
     var normal   : vec3<f32> = textureLoad( gbuffer_normal, vec2i(floor(coord.xy)), 0 ).xyz;
     var depth    : f32       = textureLoad( gbuffer_depth, vec2i(floor(coord.xy)), 0 );
+    let albedo   : vec4<f32> = textureLoad( gbuffer_albedo, vec2i(floor(coord.xy)), 0 );
 
     normal.x = (normal.x + 1.0) * 0.5;
     normal.y = (normal.y + 1.0) * 0.5;
@@ -71,6 +74,10 @@ fn fs_debug_main( @builtin(position) coord : vec4f ) -> @location(0) vec4f
     else if(inUniform.buffer_type == 2.0)
     {
       return vec4(depth, 0.0, 0.0, 1.0);
+    }
+    else if(inUniform.buffer_type == 3.0)
+    {
+      return albedo;
     }
 
     return vec4(depth, 0.0, 0.0, 1.0);

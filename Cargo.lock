@@ -2280,6 +2280,7 @@ dependencies = [
  "glam",
  "gloo",
  "gltf",
+ "image",
  "log",
  "reqwest",
  "tobj",

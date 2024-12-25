@@ -23,6 +23,7 @@ pub struct Mesh {
     pub _name: std::string::String,
     pub vertices: Vec<Vertex>,
     pub indices: Vec<u32>,
+    pub material: Option<u32>,
 }
 
 // -----------------------------------------------------------------------------
@@ -195,6 +196,7 @@ pub fn create_cube() -> Mesh {
         _name: "cube".to_string(),
         vertices: vertex_data.to_vec(),
         indices: index_data.to_vec(),
+        material: None,
     }
 }
 
