@@ -1,7 +1,6 @@
 use crate::engine::{self, define};
 use crate::rendering::common;
 
-use image::GenericImageView;
 use wasm_bindgen::JsCast;
 use wgpu::util::DeviceExt;
 use wgpu::TextureViewDescriptor;
@@ -965,31 +964,20 @@ fn init_differed_gbuffers_shading(
             });
 
     // Textures
-    let base_color_texture_data = &materials
+    let base_color_texture_raw = &materials
         .get(mesh.material.unwrap() as usize)
         .unwrap()
-        .base_color_texture_raw;
-    let base_color_is_valid: bool = base_color_texture_data.len() > 0;
-    let mut base_color_texture_width: u32 = 1;
-    let mut base_color_texture_height: u32 = 1;
-
-    if base_color_is_valid {
-        base_color_texture_width = ((base_color_texture_data[16] as u32) << 24)
-            + ((base_color_texture_data[17] as u32) << 16)
-            + ((base_color_texture_data[18] as u32) << 8)
-            + ((base_color_texture_data[19] as u32) << 0);
-        base_color_texture_height = ((base_color_texture_data[20] as u32) << 24)
-            + ((base_color_texture_data[21] as u32) << 16)
-            + ((base_color_texture_data[22] as u32) << 8)
-            + ((base_color_texture_data[23] as u32) << 0);
-    }
-
+        .base_color_texture_dat;
+    let base_color_texture_size = &materials
+        .get(mesh.material.unwrap() as usize)
+        .unwrap()
+        .base_color_texture_size;
     let base_color_texture: wgpu::Texture =
         interface.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("base color texture"),
             size: wgpu::Extent3d {
-                width: base_color_texture_width,
-                height: base_color_texture_height,
+                width: base_color_texture_size[0],
+                height: base_color_texture_size[1],
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -1001,54 +989,25 @@ fn init_differed_gbuffers_shading(
         });
 
     // Support .png format
-    if base_color_is_valid {
-        let base_color_image_rgba = &materials
-            .get(mesh.material.unwrap() as usize)
-            .unwrap()
-            .base_color_image_rgba8
-            .as_ref()
-            .unwrap();
-
-        interface.queue.write_texture(
-            wgpu::ImageCopyTexture {
-                aspect: wgpu::TextureAspect::All,
-                texture: &base_color_texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-            },
-            &base_color_image_rgba,
-            wgpu::ImageDataLayout {
-                offset: 0,
-                bytes_per_row: Some(4 * base_color_texture_width),
-                rows_per_image: Some(base_color_texture_height),
-            },
-            wgpu::Extent3d {
-                width: base_color_texture_width,
-                height: base_color_texture_height,
-                depth_or_array_layers: 1,
-            },
-        );
-    } else {
-        interface.queue.write_texture(
-            wgpu::ImageCopyTexture {
-                aspect: wgpu::TextureAspect::All,
-                texture: &base_color_texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-            },
-            &[255, 255, 255, 255],
-            wgpu::ImageDataLayout {
-                offset: 0,
-                bytes_per_row: Some(4),
-                rows_per_image: Some(1),
-            },
-            wgpu::Extent3d {
-                width: 1,
-                height: 1,
-                depth_or_array_layers: 1,
-            },
-        );
-    }
+    interface.queue.write_texture(
+        wgpu::ImageCopyTexture {
+            aspect: wgpu::TextureAspect::All,
+            texture: &base_color_texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+        },
+        &base_color_texture_raw,
+        wgpu::ImageDataLayout {
+            offset: 0,
+            bytes_per_row: Some(4 * base_color_texture_size[0]),
+            rows_per_image: Some(base_color_texture_size[1]),
+        },
+        wgpu::Extent3d {
+            width: base_color_texture_size[0],
+            height: base_color_texture_size[1],
+            depth_or_array_layers: 1,
+        },
+    );
 
     let base_color_texture_view: wgpu::TextureView =
         base_color_texture.create_view(&wgpu::TextureViewDescriptor::default());
