@@ -156,17 +156,33 @@ pub fn init_differed_gbuffer_pipeline(
     {
         let scene_borrow = scene.borrow();
         let scene_mterials = &scene_borrow.materials;
-        for i in 0..scene_borrow.objects.len() {
-            let object_borrow = scene_borrow.objects.get(i).unwrap();
-            if object_borrow.shading_type != 0 && object_borrow.source_mesh.is_some() {
-                init_list.push(InitMap {
-                    index: i,
-                    resource: init_differed_gbuffers_shading(
-                        &interface,
-                        &object_borrow.source_mesh.as_ref().unwrap().borrow(),
-                        &scene_mterials,
-                    ),
-                });
+        if scene_borrow.use_batched == false {
+            for i in 0..scene_borrow.objects.len() {
+                let object_borrow = scene_borrow.objects.get(i).unwrap();
+                if object_borrow.shading_type != 0 && object_borrow.source_mesh.is_some() {
+                    init_list.push(InitMap {
+                        index: i,
+                        resource: init_differed_gbuffers_shading(
+                            &interface,
+                            &object_borrow.source_mesh.as_ref().unwrap().borrow(),
+                            &scene_mterials,
+                        ),
+                    });
+                }
+            }
+        } else {
+            for i in 0..scene_borrow.batched_objects.len() {
+                let batched = scene_borrow.batched_objects.get(i).unwrap();
+                if batched.shading_type != 0 && batched.source_mesh.is_some() {
+                    init_list.push(InitMap {
+                        index: i,
+                        resource: init_differed_gbuffers_shading(
+                            &interface,
+                            &batched.source_mesh.as_ref().unwrap().borrow(),
+                            &scene_mterials,
+                        ),
+                    });
+                }
             }
         }
     }
@@ -174,11 +190,22 @@ pub fn init_differed_gbuffer_pipeline(
     // Initialize pipeline
     for init_elem in init_list {
         let mut scene_borrow = scene.borrow_mut();
-        let object_borrow = scene_borrow.objects.get_mut(init_elem.index).unwrap();
-        object_borrow.shading_type = 0;
-        object_borrow.render_resource = Some(std::rc::Rc::new(std::cell::RefCell::new(
-            init_elem.resource,
-        )));
+        if scene_borrow.use_batched == false {
+            let object_borrow = scene_borrow.objects.get_mut(init_elem.index).unwrap();
+            object_borrow.shading_type = 0;
+            object_borrow.render_resource = Some(std::rc::Rc::new(std::cell::RefCell::new(
+                init_elem.resource,
+            )));
+        } else {
+            let batched = scene_borrow
+                .batched_objects
+                .get_mut(init_elem.index)
+                .unwrap();
+            batched.shading_type = 0;
+            batched.render_resource = Some(std::rc::Rc::new(std::cell::RefCell::new(
+                init_elem.resource,
+            )));
+        }
     }
 }
 
@@ -201,9 +228,17 @@ pub fn update_differed_shading(
     differed_resource: &WebGPUDifferedResource,
 ) {
     // Update gbuffer
-    for scene_object in &scene.as_ref().borrow().objects {
-        if scene_object.shading_type == 0 {
-            update_differed_gbuffers_shading(&scene, &interface, &scene_object);
+    if scene.borrow().use_batched == false {
+        for scene_object in &scene.as_ref().borrow().objects {
+            if scene_object.shading_type == 0 {
+                update_differed_gbuffers_shading(&scene, &interface, &scene_object);
+            }
+        }
+    } else {
+        for batched in &scene.as_ref().borrow().batched_objects {
+            if batched.shading_type == 0 {
+                update_differed_gbuffers_shading(&scene, &interface, &batched);
+            }
         }
     }
     // Update differed
@@ -417,70 +452,144 @@ pub fn render_differed_shading_main(
                 occlusion_query_set: None,
             });
 
-        for object in scene.borrow().objects.iter() {
-            if object.shading_type == 0 {
-                gbuffer_pass.set_pipeline(
-                    &object
-                        .render_resource
-                        .as_ref()
-                        .unwrap()
-                        .borrow()
-                        .render_pipeline,
-                );
-                gbuffer_pass.set_bind_group(
-                    0,
-                    &object.render_resource.as_ref().unwrap().borrow().bind_group,
-                    &[],
-                );
-                if object
-                    .render_resource
-                    .as_ref()
-                    .unwrap()
-                    .borrow()
-                    .bind_group_2
-                    .is_some()
-                {
-                    gbuffer_pass.set_bind_group(
-                        1,
+        if scene.borrow().use_batched == false {
+            for object in scene.borrow().objects.iter() {
+                if object.shading_type == 0 {
+                    gbuffer_pass.set_pipeline(
                         &object
                             .render_resource
                             .as_ref()
                             .unwrap()
                             .borrow()
-                            .bind_group_2,
+                            .render_pipeline,
+                    );
+                    gbuffer_pass.set_bind_group(
+                        0,
+                        &object.render_resource.as_ref().unwrap().borrow().bind_group,
                         &[],
                     );
+                    if object
+                        .render_resource
+                        .as_ref()
+                        .unwrap()
+                        .borrow()
+                        .bind_group_2
+                        .is_some()
+                    {
+                        gbuffer_pass.set_bind_group(
+                            1,
+                            &object
+                                .render_resource
+                                .as_ref()
+                                .unwrap()
+                                .borrow()
+                                .bind_group_2,
+                            &[],
+                        );
+                    }
+                    gbuffer_pass.set_index_buffer(
+                        object
+                            .render_resource
+                            .as_ref()
+                            .unwrap()
+                            .borrow()
+                            .index_buf
+                            .slice(..),
+                        wgpu::IndexFormat::Uint32,
+                    );
+                    gbuffer_pass.set_vertex_buffer(
+                        0,
+                        object
+                            .render_resource
+                            .as_ref()
+                            .unwrap()
+                            .borrow()
+                            .vertex_buf
+                            .slice(..),
+                    );
+                    gbuffer_pass.draw_indexed(
+                        0..object
+                            .render_resource
+                            .as_ref()
+                            .unwrap()
+                            .borrow()
+                            .index_count,
+                        0,
+                        0..1,
+                    );
                 }
-                gbuffer_pass.set_index_buffer(
-                    object
+            }
+        } else {
+            for batched in scene.borrow().batched_objects.iter() {
+                if batched.shading_type == 0 {
+                    gbuffer_pass.set_pipeline(
+                        &batched
+                            .render_resource
+                            .as_ref()
+                            .unwrap()
+                            .borrow()
+                            .render_pipeline,
+                    );
+                    gbuffer_pass.set_bind_group(
+                        0,
+                        &batched
+                            .render_resource
+                            .as_ref()
+                            .unwrap()
+                            .borrow()
+                            .bind_group,
+                        &[],
+                    );
+                    if batched
                         .render_resource
                         .as_ref()
                         .unwrap()
                         .borrow()
-                        .index_buf
-                        .slice(..),
-                    wgpu::IndexFormat::Uint32,
-                );
-                gbuffer_pass.set_vertex_buffer(
-                    0,
-                    object
-                        .render_resource
-                        .as_ref()
-                        .unwrap()
-                        .borrow()
-                        .vertex_buf
-                        .slice(..),
-                );
-                gbuffer_pass.draw_indexed(
-                    0..object
-                        .render_resource
-                        .as_ref()
-                        .unwrap()
-                        .borrow()
-                        .index_count,
-                    0,
-                    0..1,
-                );
+                        .bind_group_2
+                        .is_some()
+                    {
+                        gbuffer_pass.set_bind_group(
+                            1,
+                            &batched
+                                .render_resource
+                                .as_ref()
+                                .unwrap()
+                                .borrow()
+                                .bind_group_2,
+                            &[],
+                        );
+                    }
+                    gbuffer_pass.set_index_buffer(
+                        batched
+                            .render_resource
+                            .as_ref()
+                            .unwrap()
+                            .borrow()
+                            .index_buf
+                            .slice(..),
+                        wgpu::IndexFormat::Uint32,
+                    );
+                    gbuffer_pass.set_vertex_buffer(
+                        0,
+                        batched
+                            .render_resource
+                            .as_ref()
+                            .unwrap()
+                            .borrow()
+                            .vertex_buf
+                            .slice(..),
+                    );
+                    gbuffer_pass.draw_indexed(
+                        0..batched
+                            .render_resource
+                            .as_ref()
+                            .unwrap()
+                            .borrow()
+                            .index_count,
+                        0,
+                        0..1,
+                    );
+                }
             }
         }
     }
@@ -888,7 +997,7 @@ fn update_phong_shading(
     let direction: glam::Vec3 = scene_value.eye_direction;
 
     // Create matrices and write buffer
-    let model_matrix = glam::Mat4::from_cols_array_2d(&object.model_matrix);
+    let model_matrix = glam::Mat4::from_cols_array_2d(&object.world_transform);
     let view_matrix = glam::Mat4::look_to_rh(eye, direction, glam::Vec3::Z);
     let projection_matrix: glam::Mat4 =
         glam::Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, aspect_ratio, 0.01, 100.0);
@@ -930,7 +1039,6 @@ fn init_differed_gbuffers_shading(
         _projection_matrix: [f32; 16],
         _rotation_matrix: [f32; 16],
     }
-
     let shader: wgpu::ShaderModule =
         interface
             .device
@@ -964,6 +1072,7 @@ fn init_differed_gbuffers_shading(
             });
 
     // Textures
+
     let base_color_texture_raw = &materials
         .get(mesh.material.unwrap() as usize)
         .unwrap()
@@ -988,7 +1097,7 @@ fn init_differed_gbuffers_shading(
             view_formats: &[],
         });
 
-    // Support .png format
+    // slow
     interface.queue.write_texture(
         wgpu::ImageCopyTexture {
             aspect: wgpu::TextureAspect::All,
@@ -1185,7 +1294,6 @@ fn init_differed_gbuffers_shading(
                 multiview: None,
                 cache: None,
             });
-
     let index_count: u32 = index_data.len() as u32;
 
     let render_resource: WebGPURenderResource = WebGPURenderResource {
@@ -1220,36 +1328,10 @@ fn update_differed_gbuffers_shading(
     let eye: glam::Vec3 = scene_value.eye_location;
     let direction: glam::Vec3 = scene_value.eye_direction;
 
-    let mut model_matrix = glam::Mat4::from_cols_array_2d(&object.model_matrix);
-
-    // Transform from parent recursively
-    if object.parent_index.is_some() {
-        let mut parent_index = *object.parent_index.as_ref().unwrap();
-        loop {
-            model_matrix = glam::Mat4::from_cols_array_2d(
-                &scene
-                    .borrow()
-                    .objects
-                    .get(parent_index as usize)
-                    .unwrap()
-                    .model_matrix,
-            ) * model_matrix;
-            let parent_option = scene
-                .borrow()
-                .objects
-                .get(parent_index as usize)
-                .unwrap()
-                .parent_index;
-            if parent_option.is_some() {
-                parent_index = parent_option.unwrap();
-                continue;
-            }
-            break;
-        }
-    }
+    let mut model_matrix = glam::Mat4::from_cols_array_2d(&object.world_transform);
 
     // Force Y-up to Z-up
-    if scene_value.instant_convert_y_to_z {
+    if scene_value.convert_y_to_z {
         let y_to_z_mat: glam::Mat4 =
             glam::Mat4::from_axis_angle(glam::Vec3::new(1.0, 0.0, 0.0), std::f32::consts::PI / 2.0);
         model_matrix = y_to_z_mat * model_matrix;

@@ -1,19 +1,19 @@
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex {
-    _pos: [f32; 4],
-    _color: [f32; 3],
-    _uv: [f32; 2],
-    _normal: [f32; 3],
+    pub pos: [f32; 4],
+    pub color: [f32; 3],
+    pub uv: [f32; 2],
+    pub normal: [f32; 3],
 }
 
 impl Vertex {
     pub fn new(pos: [f32; 3], color: [f32; 3], uv: [f32; 2], normal: [f32; 3]) -> Vertex {
         Vertex {
-            _pos: [pos[0], pos[1], pos[2], 1.0],
-            _color: color,
-            _uv: uv,
-            _normal: normal,
+            pos: [pos[0], pos[1], pos[2], 1.0],
+            color,
+            uv,
+            normal,
         }
     }
 }
@@ -240,10 +240,10 @@ pub fn create_vertices_from_obj(model: &tobj::Model, swap_yz: bool) -> Vec<Verte
         }
 
         vertex_vec.push(Vertex {
-            _pos: [pos[0], pos[1], pos[2], 1.0],
-            _color: color,
-            _uv: uvs,
-            _normal: normal,
+            pos: [pos[0], pos[1], pos[2], 1.0],
+            color,
+            uv: uvs,
+            normal,
         });
     }
 

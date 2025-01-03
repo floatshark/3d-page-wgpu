@@ -14,15 +14,18 @@ pub async fn main() {
 
     log::debug!("Main");
 
-    // Scene
+    // Scene setup
     let mut scene: engine::scene::Scene = engine::scene::Scene::default();
     scene.init();
     let scene: std::rc::Rc<std::cell::RefCell<engine::scene::Scene>> =
         std::rc::Rc::new(std::cell::RefCell::new(scene));
 
-    // Loading
+    // Load .gltf file
     (scene.borrow_mut().objects, scene.borrow_mut().materials) =
         engine::load::load_gltf_scene(engine::define::GLTF_BATHROOM_PATH).await;
+
+    // Batch objects
+    engine::scene::batch_objects(&scene);
 
     // Rendering context
     let webgpu_interface: rendering::webgpu::WebGPUInterface =
@@ -30,7 +33,7 @@ pub async fn main() {
     let differed_resource: rendering::webgpu::WebGPUDifferedResource =
         rendering::webgpu::init_differed_pipeline(&webgpu_interface);
 
-    // Javascript Control
+    // Javascript controls
     let control_response_js: std::rc::Rc<
         std::cell::RefCell<frontend::eventlistener::ControlResponseJs>,
     > = std::rc::Rc::new(std::cell::RefCell::new(
@@ -45,7 +48,7 @@ pub async fn main() {
     let f: std::rc::Rc<_> = std::rc::Rc::new(std::cell::RefCell::new(None));
     let g: std::rc::Rc<std::cell::RefCell<Option<_>>> = f.clone();
     *g.borrow_mut() = Some(wasm_bindgen::closure::Closure::wrap(Box::new(move || {
-        engine::scene::update_js(&scene, &control_response_js);
+        engine::scene::update_control(&scene, &control_response_js);
 
         let shading_type: engine::scene::ShadingType = scene.borrow().scene_shading_type;
 
@@ -71,6 +74,11 @@ pub async fn main() {
             _ => {}
         }
 
+        if scene.borrow().is_first_update {
+            scene.borrow_mut().is_first_update = false;
+            debug_log_clock("Render OK");
+        }
+
         request_animation_frame(f.borrow().as_ref().unwrap());
     })
         as Box<dyn FnMut()>));
@@ -84,4 +92,20 @@ fn request_animation_frame(f: &wasm_bindgen::closure::Closure<dyn FnMut()>) {
         .unwrap()
         .request_animation_frame(f.as_ref().unchecked_ref())
         .expect("should register `requestAnimationFrame` OK");
+}
+
+pub fn debug_log_clock(message: &str) {
+    let enable_log = true;
+
+    if enable_log {
+        log::debug!(
+            "{:.2} ms : {}",
+            web_sys::window()
+                .expect("should have a Window")
+                .performance()
+                .expect("should have a Performance")
+                .now(),
+            message
+        );
+    }
 }

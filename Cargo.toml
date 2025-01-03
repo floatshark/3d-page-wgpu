@@ -44,5 +44,6 @@ features = [
 	'Node',
 	'HtmlCollection',
 	'Window',
-	'Location'
+	'Location',
+	'Performance'
 	]

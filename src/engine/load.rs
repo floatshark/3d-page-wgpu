@@ -1,7 +1,8 @@
-use image::GenericImageView;
-
 use crate::engine;
 use crate::rendering;
+use image::GenericImageView;
+
+// Utility
 
 #[allow(dead_code)]
 pub fn format_url(file_name: &str) -> reqwest::Url {
@@ -62,10 +63,104 @@ pub async fn load_binary(file_name: &str) -> anyhow::Result<Vec<u8>> {
 
     Ok(data)
 }
+#[allow(dead_code)]
+async fn extract_texture_data(file_name: &String) -> (Vec<u8>, [u32; 2]) {
+    let mut out_data: Vec<u8> = Vec::new();
+    let mut out_size: [u32; 2] = [1, 1];
+
+    // assume .png or .bmp only
+    let png_path: &String = file_name;
+    let rgba_path: String = png_path.replace(".png", ".rgba");
+    //let bmp_path: String = png_path.replace(".png", ".bmp");
+
+    // this check is slow, so assume .rgba is exist
+    /*
+    let is_exist_rgba: bool = !load_string(&rgba_path.as_str())
+        .await
+        .unwrap()
+        .starts_with("<!DOCTYPE html>");
+    */
+    let is_exist_rgba = true;
+
+    // Load .rgba - ref : bin/image_convert.rs
+    if is_exist_rgba {
+        let texture_data = load_binary(&rgba_path.as_str())
+            .await
+            .expect("Failed to load texture");
+
+        let data_width: u32 = load_4byte_to_u32(&texture_data[0..4]);
+        let data_height: u32 = load_4byte_to_u32(&texture_data[4..8]);
+
+        out_data = texture_data[8..texture_data.len()].to_vec();
+        out_size = [data_width, data_height];
+    }
+    // Load .bmp
+    /*
+    else if is_exist_rgba{
+        let texture_data = load_binary(&bmp_path.as_str())
+            .await
+            .expect("Failed to load texture");
+
+        let info_header_ofset: usize = 14;
+        let data_width: u32 =
+            load_4byte_to_u32(&texture_data[(info_header_ofset + 4)..(info_header_ofset + 8)]);
+        let data_height: u32 =
+            load_4byte_to_u32(&texture_data[(info_header_ofset + 8)..(info_header_ofset + 12)]);
+
+        let data_offset: usize = load_4byte_to_u32(&texture_data[10..14]) as usize;
+        let data_len = (data_width * data_height * 4) as usize;
+
+        out_data = texture_data[data_offset..(data_offset + data_len)].to_vec();
+        out_size = [data_width, data_height];
+
+        log::debug!("{}", out_data.len());
+
+        /* too slow
+        let texture_image =
+        image::load_from_memory_with_format(&texture_data, image::ImageFormat::Bmp);
+        if texture_image.is_ok() {
+            log::debug!("loaded");
+            let texture_image_unwrap = texture_image.unwrap();
+            out_data = texture_image_unwrap.to_rgba8().to_vec();
+            out_size = [
+                texture_image_unwrap.dimensions().0,
+                texture_image_unwrap.dimensions().1,
+            ];
+        }
+        */
+    }*/
+    // Load .png slower
+    else {
+        let texture_data = load_binary(&png_path.as_str())
+            .await
+            .expect("Failed to load texture");
+        let texture_image =
+            image::load_from_memory_with_format(&texture_data, image::ImageFormat::Png);
+
+        if texture_image.is_ok() {
+            let texture_image_unwrap = texture_image.unwrap();
+            out_data = texture_image_unwrap.to_rgba8().to_vec();
+            out_size = [
+                texture_image_unwrap.dimensions().0,
+                texture_image_unwrap.dimensions().1,
+            ];
+        }
+    }
+
+    return (out_data, out_size);
+}
+#[allow(dead_code)]
+fn load_4byte_to_u32(bytes: &[u8]) -> u32 {
+    let out_value: u32 = ((bytes[0] as u32) << 24)
+        + ((bytes[1] as u32) << 16)
+        + ((bytes[2] as u32) << 8)
+        + ((bytes[3] as u32) << 0);
+
+    return out_value;
+}
 
 // Load .gltf
 
-#[allow(dead_code)]
 pub async fn load_gltf_scene(
     file_name: &str,
 ) -> (
@@ -102,14 +197,13 @@ pub async fn load_gltf_scene(
         }
     }
 
-    let mut out_mesh: Vec<engine::scene::SceneObject> = Vec::new();
-    let mut out_material: Vec<engine::scene::SceneMaterial> = Vec::new();
-
-    // Debug only
+    let mut out_objects: Vec<engine::scene::SceneObject> = Vec::new();
+    let mut out_materials: Vec<engine::scene::SceneMaterial> = Vec::new();
     let mut num_node: u32 = 0;
     let mut num_verts: u32 = 0;
     let mut num_indices: u32 = 0;
 
+    // Create scene object from meshes
     for node in gltf.nodes() {
         //log::debug!("Node : {}", node.name().unwrap());
 
@@ -128,7 +222,7 @@ pub async fn load_gltf_scene(
         let mut scene_object = engine::scene::SceneObject {
             _name: Some(node.name().unwrap().to_string()),
             shading_type: 44,
-            model_matrix: node.transform().matrix(),
+            world_transform: node.transform().matrix(),
             source_mesh: if mesh.is_some() {
                 Some(std::rc::Rc::new(std::cell::RefCell::new(mesh.unwrap())))
             } else {
@@ -143,13 +237,13 @@ pub async fn load_gltf_scene(
             scene_object.child_index.push(child.index() as u32);
         }
 
-        out_mesh.push(scene_object);
+        out_objects.push(scene_object);
     }
 
-    // Build parent relation, parent is unique
-    let mut parent_vec: Vec<Option<u32>> = vec![None; out_mesh.len()];
+    // Build parent tree
+    let mut parent_vec: Vec<Option<u32>> = vec![None; out_objects.len()];
     {
-        for object in out_mesh.iter() {
+        for object in out_objects.iter() {
             for child in object.child_index.iter() {
                 let inner = parent_vec.get_mut(*child as usize).unwrap();
                 inner.replace(object.index);
@@ -158,18 +252,47 @@ pub async fn load_gltf_scene(
         for i in 0..parent_vec.len() {
             let parent = parent_vec.get(i).unwrap();
             if parent.is_some() {
-                let object = out_mesh.get_mut(i).unwrap();
+                let object = out_objects.get_mut(i).unwrap();
                 object.parent_index = Some(parent.unwrap());
             }
         }
     }
 
+    // Convert object local matrix to world matrix
+    let mut matrix_vec: Vec<[[f32; 4]; 4]> = Vec::with_capacity(out_objects.len());
+    for object in &out_objects {
+        let mut model_matrix = glam::Mat4::from_cols_array_2d(&object.world_transform);
+        if object.parent_index.is_some() {
+            let mut parent_index = *object.parent_index.as_ref().unwrap();
+            loop {
+                model_matrix = glam::Mat4::from_cols_array_2d(
+                    &out_objects
+                        .get(parent_index as usize)
+                        .unwrap()
+                        .world_transform,
+                ) * model_matrix;
+
+                let parent_option = out_objects.get(parent_index as usize).unwrap().parent_index;
+
+                if parent_option.is_some() {
+                    parent_index = parent_option.unwrap();
+                    continue;
+                }
+                break;
+            }
+        }
+        matrix_vec.push(model_matrix.to_cols_array_2d());
+    }
+    for i in 0..matrix_vec.len() {
+        out_objects.get_mut(i).unwrap().world_transform = matrix_vec[i];
+    }
+
     // Load materials
     for material in gltf.materials() {
         let pbr = material.pbr_metallic_roughness();
-
-        let mut base_color_texture_data: Vec<u8> = [255, 0, 255, 255].to_vec();
+        let mut base_color_texture_data: Vec<u8> = Vec::new();
         let mut base_color_texture_size: [u32; 2] = [1, 1];
+
         if pbr.base_color_texture().is_some() {
             let texture_source = &pbr
                 .base_color_texture()
@@ -190,74 +313,31 @@ pub async fn load_gltf_scene(
             };
         }
 
+        if base_color_texture_data.is_empty() {
+            base_color_texture_data = [255, 0, 255, 255].to_vec();
+        }
+
         let scene_material = engine::scene::SceneMaterial {
             _name: Some(material.name().unwrap().to_string()),
             base_color_texture_dat: base_color_texture_data,
             base_color_texture_size: base_color_texture_size,
         };
 
-        out_material.push(scene_material);
+        out_materials.push(scene_material);
     }
 
     log::debug!(
-        "nodes : {}\n verts : {},\n tris  : {},\n mat   : {}",
+        "\n {} \n nodes : {}\n verts : {},\n tris  : {},\n mat   : {}",
+        &file_name,
         num_node,
         num_verts,
         num_indices / 3,
-        out_material.len()
+        out_materials.len()
     );
 
-    return (out_mesh, out_material);
+    return (out_objects, out_materials);
 }
 
-#[allow(dead_code)]
-pub async fn load_gltf_meshes(file_name: &str) -> Vec<rendering::common::Mesh> {
-    let gltf_text = load_string(file_name)
-        .await
-        .expect("Failed to parse .gltf file path string");
-    let gltf_cursor: std::io::Cursor<String> = std::io::Cursor::new(gltf_text);
-    let gltf_reader: std::io::BufReader<_> = std::io::BufReader::new(gltf_cursor);
-
-    let gltf: gltf::Gltf = gltf::Gltf::from_reader(gltf_reader).expect("Failed to read .gltf file");
-    let mut buffer_data: Vec<Vec<u8>> = Vec::new();
-
-    for buffer in gltf.buffers() {
-        match buffer.source() {
-            gltf::buffer::Source::Bin => {
-                //if let Some(blob) = gltf.blob.as_deref() {
-                //    buffer_data.push(blob.into());
-                //    log::debug!("Found a bin, saving");
-                //};
-            }
-            gltf::buffer::Source::Uri(uri) => {
-                let slash_num: usize = file_name.rfind("/").unwrap() + 1;
-                let folder_path = file_name.split_at(slash_num).0;
-                let binary_path = folder_path.to_string() + uri;
-                let bin = load_binary(&binary_path.as_str())
-                    .await
-                    .expect("Failed to load binary");
-                buffer_data.push(bin);
-            }
-        }
-    }
-
-    let mut out: Vec<rendering::common::Mesh> = Vec::new();
-
-    for _scene in gltf.scenes() {
-        for node in gltf.nodes() {
-            log::debug!("Node {} : {}", node.index(), node.name().unwrap());
-
-            if node.mesh().is_none() {
-                continue;
-            }
-            out.push(get_gltf_mesh_from_node(&node, &buffer_data));
-        }
-    }
-
-    return out;
-}
-
-#[allow(dead_code)]
 fn get_gltf_mesh_from_node(
     node: &gltf::Node<'_>,
     buffer_data: &Vec<Vec<u8>>,
@@ -353,98 +433,6 @@ fn get_gltf_mesh_from_node(
         indices: mesh_indices,
         material: mesh_material,
     }
-}
-#[allow(dead_code)]
-async fn extract_texture_data(file_name: &String) -> (Vec<u8>, [u32; 2]) {
-    let mut out_data: Vec<u8> = [255, 0, 255, 255].to_vec();
-    let mut out_size: [u32; 2] = [1, 1];
-
-    // assume .png or .bmp only
-    let png_path: &String = file_name;
-    let rgba_path: String = png_path.replace(".png", ".rgba");
-    //let bmp_path: String = png_path.replace(".png", ".bmp");
-
-    let is_exist_rgba: bool = !load_string(&rgba_path.as_str())
-        .await
-        .unwrap()
-        .starts_with("<!DOCTYPE html>");
-
-    // Load .rgba - ref : bin/image_convert.rs
-    if is_exist_rgba {
-        let texture_data = load_binary(&rgba_path.as_str())
-            .await
-            .expect("Failed to load texture");
-
-        let data_width: u32 = load_4byte_to_u32(&texture_data[0..4]);
-        let data_height: u32 = load_4byte_to_u32(&texture_data[4..8]);
-
-        out_data = texture_data[8..texture_data.len()].to_vec();
-        out_size = [data_width, data_height];
-    }
-    // Load .bmp
-    /*
-    else if is_exist_rgba{
-        let texture_data = load_binary(&bmp_path.as_str())
-            .await
-            .expect("Failed to load texture");
-
-        let info_header_ofset: usize = 14;
-        let data_width: u32 =
-            load_4byte_to_u32(&texture_data[(info_header_ofset + 4)..(info_header_ofset + 8)]);
-        let data_height: u32 =
-            load_4byte_to_u32(&texture_data[(info_header_ofset + 8)..(info_header_ofset + 12)]);
-
-        let data_offset: usize = load_4byte_to_u32(&texture_data[10..14]) as usize;
-        let data_len = (data_width * data_height * 4) as usize;
-
-        out_data = texture_data[data_offset..(data_offset + data_len)].to_vec();
-        out_size = [data_width, data_height];
-
-        log::debug!("{}", out_data.len());
-
-        /* too slow
-        let texture_image =
-        image::load_from_memory_with_format(&texture_data, image::ImageFormat::Bmp);
-        if texture_image.is_ok() {
-            log::debug!("loaded");
-            let texture_image_unwrap = texture_image.unwrap();
-            out_data = texture_image_unwrap.to_rgba8().to_vec();
-            out_size = [
-                texture_image_unwrap.dimensions().0,
-                texture_image_unwrap.dimensions().1,
-            ];
-        }
-        */
-    }*/
-    // Load .png slower
-    else {
-        let texture_data = load_binary(&png_path.as_str())
-            .await
-            .expect("Failed to load texture");
-        let texture_image =
-            image::load_from_memory_with_format(&texture_data, image::ImageFormat::Png);
-
-        if texture_image.is_ok() {
-            let texture_image_unwrap = texture_image.unwrap();
-            out_data = texture_image_unwrap.to_rgba8().to_vec();
-            out_size = [
-                texture_image_unwrap.dimensions().0,
-                texture_image_unwrap.dimensions().1,
-            ];
-        }
-    }
-
-    return (out_data, out_size);
-}
-
-#[allow(dead_code)]
-fn load_4byte_to_u32(bytes: &[u8]) -> u32 {
-    let out_value: u32 = ((bytes[0] as u32) << 24)
-        + ((bytes[1] as u32) << 16)
-        + ((bytes[2] as u32) << 8)
-        + ((bytes[3] as u32) << 0);
-
-    return out_value;
 }
 
 // Load .obj

@@ -4,16 +4,22 @@ use glam::Vec4Swizzles;
 
 #[derive(Clone, Default)]
 pub struct Scene {
+    // own
+    pub objects: Vec<SceneObject>,
+    pub batched_objects: Vec<SceneObject>,
+    pub materials: Vec<SceneMaterial>,
+    // world variables
     pub eye_location: glam::Vec3,
     pub eye_direction: glam::Vec3,
     pub directional_light_angle: [f32; 3],
     pub ambient_light_color: [f32; 4],
     pub background_color: [f32; 4],
+    // configs
+    pub is_first_update: bool,
+    pub convert_y_to_z: bool,
     pub scene_shading_type: ShadingType,
     pub differed_debug_type: u8,
-    pub objects: Vec<SceneObject>,
-    pub instant_convert_y_to_z: bool,
-    pub materials: Vec<SceneMaterial>,
+    pub use_batched: bool,
 }
 impl Scene {
     pub fn init(&mut self) {
@@ -29,29 +35,32 @@ impl Scene {
         self.scene_shading_type = ShadingType::Differed;
         self.differed_debug_type = 0;
         self.objects = Vec::new();
-        self.instant_convert_y_to_z = true;
+        self.convert_y_to_z = true;
+        self.is_first_update = true;
+        self.use_batched = true;
     }
 }
 
 #[derive(Clone, Default)]
 pub struct SceneObject {
     pub _name: Option<std::string::String>,
-    pub shading_type: u8,
-    pub model_matrix: [[f32; 4]; 4],
-    pub source_mesh: Option<std::rc::Rc<std::cell::RefCell<rendering::common::Mesh>>>,
-    pub render_resource:
-        Option<std::rc::Rc<std::cell::RefCell<rendering::webgpu::WebGPURenderResource>>>,
     pub index: u32,
     pub parent_index: Option<u32>,
     pub child_index: Vec<u32>,
-    //pub material_index: Option<u32>,
+    pub world_transform: [[f32; 4]; 4],
+    pub source_mesh: Option<std::rc::Rc<std::cell::RefCell<rendering::common::Mesh>>>,
+    pub shading_type: u8,
+    pub render_resource:
+        Option<std::rc::Rc<std::cell::RefCell<rendering::webgpu::WebGPURenderResource>>>,
 }
+
 #[derive(Clone, Default)]
 pub struct SceneMaterial {
     pub _name: Option<std::string::String>,
     pub base_color_texture_dat: Vec<u8>,
     pub base_color_texture_size: [u32; 2],
 }
+
 #[derive(Clone, Copy, Default)]
 pub enum ShadingType {
     #[default]
@@ -60,9 +69,70 @@ pub enum ShadingType {
     Forward,
 }
 
-// ---------------------------------------------------------------------------------------
+// Util
 
-pub fn update_js(
+pub fn batch_objects(scene: &std::rc::Rc<std::cell::RefCell<Scene>>) {
+    let mut batch_map: std::collections::HashMap<u32, rendering::common::Mesh> =
+        std::collections::HashMap::with_capacity(scene.borrow().objects.len());
+    for object in scene.borrow().objects.iter() {
+        if object.source_mesh.is_some() {
+            let source_mesh = object.source_mesh.as_ref().unwrap();
+            let material_option = source_mesh.borrow().material;
+            if material_option.is_some() {
+                let material = material_option.as_ref().unwrap();
+                // init
+                if batch_map.get(material).is_none() {
+                    batch_map.insert(*material, rendering::common::Mesh::default());
+                }
+                // batch
+                let batched_mesh = batch_map.get_mut(material).unwrap();
+                let mut source_vertices = source_mesh.borrow().vertices.clone();
+                let indices_offset = batched_mesh.vertices.len() as u32;
+                let trans_matrix = glam::Mat4::from_cols_array_2d(&object.world_transform);
+                let rotation_matrix =
+                    glam::Mat4::from_quat(trans_matrix.to_scale_rotation_translation().1);
+                for i in 0..source_vertices.len() {
+                    let vert = glam::Vec4::from_array(source_vertices[i].pos);
+                    let transed_vert = trans_matrix.mul_vec4(vert);
+                    source_vertices[i].pos = transed_vert.to_array();
+                    let norm = glam::Vec4::new(
+                        source_vertices[i].normal[0],
+                        source_vertices[i].normal[1],
+                        source_vertices[i].normal[2],
+                        1.0,
+                    );
+                    let transed_norm = rotation_matrix.mul_vec4(norm);
+                    source_vertices[i].normal = [transed_norm.x, transed_norm.y, transed_norm.z];
+                }
+                batched_mesh.vertices.append(&mut source_vertices);
+
+                let mut source_indices = source_mesh.borrow().indices.clone();
+                for index in source_indices.iter_mut() {
+                    *index += indices_offset;
+                }
+                batched_mesh.indices.append(&mut source_indices);
+                batched_mesh.material = Some(*material);
+            } else {
+                // no material not create batched mesh
+            }
+        }
+    }
+
+    for batch_pair in batch_map {
+        let batched_object = SceneObject {
+            _name: Some("batched".to_string()),
+            shading_type: 44,
+            world_transform: glam::Mat4::IDENTITY.to_cols_array_2d(),
+            source_mesh: Some(std::rc::Rc::new(std::cell::RefCell::new(batch_pair.1))),
+            render_resource: None,
+            index: batch_pair.0,
+            ..Default::default()
+        };
+        scene.borrow_mut().batched_objects.push(batched_object);
+    }
+}
+
+pub fn update_control(
     scene: &std::rc::Rc<std::cell::RefCell<Scene>>,
     in_control_event: &std::rc::Rc<std::cell::RefCell<frontend::eventlistener::ControlResponseJs>>,
 ) {

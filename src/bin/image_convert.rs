@@ -11,7 +11,7 @@ pub fn main() {
     env_logger::init();
 
     // hard code temp
-	let dir_name_hard_code = "exsample";
+    let dir_name_hard_code = "exsample";
     let files = get_dir_files(&dir_name_hard_code).expect("Failed to read image folder path");
 
     log::info!("found {} files", files.len());
