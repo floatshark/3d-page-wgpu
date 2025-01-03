@@ -22,7 +22,7 @@ pub async fn main() {
 
     // Load .gltf file
     (scene.borrow_mut().objects, scene.borrow_mut().materials) =
-        engine::load::load_gltf_scene(engine::define::GLTF_BATHROOM_PATH).await;
+        engine::load::load_gltf_scene(engine::define::GLTF_LOGO_PATH).await;
 
     // Batch objects
     engine::scene::batch_objects(&scene);

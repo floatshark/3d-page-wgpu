@@ -823,6 +823,7 @@ fn update_color_shading(
 fn init_phong_shading(interface: &WebGPUInterface, mesh: &common::Mesh) -> WebGPURenderResource {
     struct PhongUniform {
         transform_matrix: [f32; 16],
+        rotation_matrix: [f32; 16],
         directional_light: [f32; 4],
         ambient_light: [f32; 4],
         inverse_matrix: [f32; 16],
@@ -996,8 +997,15 @@ fn update_phong_shading(
     let eye: glam::Vec3 = scene_value.eye_location;
     let direction: glam::Vec3 = scene_value.eye_direction;
 
-    // Create matrices and write buffer
-    let model_matrix = glam::Mat4::from_cols_array_2d(&object.world_transform);
+    let mut model_matrix = glam::Mat4::from_cols_array_2d(&object.world_transform);
+
+    // Force Y-up to Z-up
+    if scene_value.convert_y_to_z {
+        let y_to_z_mat: glam::Mat4 =
+            glam::Mat4::from_axis_angle(glam::Vec3::new(1.0, 0.0, 0.0), std::f32::consts::PI / 2.0);
+        model_matrix = y_to_z_mat * model_matrix;
+    }
+
     let view_matrix = glam::Mat4::look_to_rh(eye, direction, glam::Vec3::Z);
     let projection_matrix: glam::Mat4 =
         glam::Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, aspect_ratio, 0.01, 100.0);
@@ -1007,7 +1015,11 @@ fn update_phong_shading(
     let ambient: [f32; 4] = scene_value.ambient_light_color;
     let inverse_projection: glam::Mat4 = transform_matrix.inverse();
 
+    let rotaton_matrix: glam::Mat4 =
+        glam::Mat4::from_quat(model_matrix.to_scale_rotation_translation().1);
+
     let mut uniform_total: Vec<f32> = transform_matrix.to_cols_array().to_vec();
+    uniform_total.extend_from_slice(&rotaton_matrix.to_cols_array().to_vec());
     uniform_total.extend_from_slice(&directional);
     uniform_total.extend_from_slice(&[0.0]); // Padding!
     uniform_total.extend_from_slice(&ambient);
@@ -1071,12 +1083,12 @@ fn init_differed_gbuffers_shading(
                 usage: wgpu::BufferUsages::INDEX,
             });
 
-    // Textures
+    // Textures : warning write texture is slow
 
     let base_color_texture_raw = &materials
         .get(mesh.material.unwrap() as usize)
         .unwrap()
-        .base_color_texture_dat;
+        .base_color_texture;
     let base_color_texture_size = &materials
         .get(mesh.material.unwrap() as usize)
         .unwrap()
@@ -1097,7 +1109,6 @@ fn init_differed_gbuffers_shading(
             view_formats: &[],
         });
 
-    // slow
     interface.queue.write_texture(
         wgpu::ImageCopyTexture {
             aspect: wgpu::TextureAspect::All,
@@ -1131,6 +1142,62 @@ fn init_differed_gbuffers_shading(
             ..Default::default()
         });
 
+    let normal_texture_raw = &materials
+        .get(mesh.material.unwrap() as usize)
+        .unwrap()
+        .normal_texture;
+    let normal_texture_size = &materials
+        .get(mesh.material.unwrap() as usize)
+        .unwrap()
+        .normal_texture_size;
+    let normal_texture: wgpu::Texture = interface.device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("base color texture"),
+        size: wgpu::Extent3d {
+            width: normal_texture_size[0],
+            height: normal_texture_size[1],
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+
+    interface.queue.write_texture(
+        wgpu::ImageCopyTexture {
+            aspect: wgpu::TextureAspect::All,
+            texture: &normal_texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+        },
+        &normal_texture_raw,
+        wgpu::ImageDataLayout {
+            offset: 0,
+            bytes_per_row: Some(4 * normal_texture_size[0]),
+            rows_per_image: Some(normal_texture_size[1]),
+        },
+        wgpu::Extent3d {
+            width: normal_texture_size[0],
+            height: normal_texture_size[1],
+            depth_or_array_layers: 1,
+        },
+    );
+
+    let normal_texture_view: wgpu::TextureView =
+        normal_texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let normal_texture_sampler: wgpu::Sampler =
+        interface.device.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+
     // bindings
 
     let uniform_size: u64 = std::mem::size_of::<WriteGBuffersUniform>() as u64;
@@ -1147,7 +1214,7 @@ fn init_differed_gbuffers_shading(
             label: None,
             entries: &[wgpu::BindGroupLayoutEntry {
                 binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
+                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: false,
@@ -1190,6 +1257,22 @@ fn init_differed_gbuffers_shading(
                         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                         count: None,
                     },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
                 ],
                 label: Some("texture_bind_group_layout"),
             });
@@ -1206,6 +1289,14 @@ fn init_differed_gbuffers_shading(
                 wgpu::BindGroupEntry {
                     binding: 1,
                     resource: wgpu::BindingResource::Sampler(&base_color_texture_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&normal_texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Sampler(&normal_texture_sampler),
                 },
             ],
             label: Some("texture_bind_group"),

@@ -11,7 +11,7 @@ pub fn main() {
     env_logger::init();
 
     // hard code temp
-    let dir_name_hard_code = "exsample";
+    let dir_name_hard_code = "example";
     let files = get_dir_files(&dir_name_hard_code).expect("Failed to read image folder path");
 
     log::info!("found {} files", files.len());
@@ -20,13 +20,12 @@ pub fn main() {
         let file_name = file.file_name().unwrap().to_str().unwrap();
         log::info!("{}", &file_name);
 
-        if file_name.contains(".png") {
-            convert_and_save_rgba_file(&file);
-            log::info!(
-                "saved {} .rgba format",
-                file.file_name().unwrap().to_str().unwrap()
-            );
-        }
+        convert_and_save_rgba_file(&file);
+
+        log::info!(
+            "saved {} .rgba format",
+            file.file_name().unwrap().to_str().unwrap()
+        );
     }
 }
 
@@ -45,7 +44,12 @@ pub fn get_dir_files(dir_name: &str) -> anyhow::Result<Vec<std::path::PathBuf>> 
 }
 
 pub fn convert_and_save_rgba_file(file: &std::path::PathBuf) {
-    if !file.extension().unwrap().to_str().unwrap().contains("png") {
+    let extension = file
+        .extension()
+        .expect("Should have extension")
+        .to_str()
+        .expect("Should be str");
+    if !extension.contains("png") && !extension.contains("jpg") && !extension.contains("jpeg") {
         return;
     }
 

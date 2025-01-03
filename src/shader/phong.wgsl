@@ -7,6 +7,7 @@ struct VertexOutput
 struct Uniform 
 {
     transform_matrix   : mat4x4<f32>,
+    rotation_matrix    : mat4x4<f32>,
     directional_light  : vec4<f32>,
     ambient_light      : vec4<f32>,
     inverse_matrix     : mat4x4<f32>
@@ -22,7 +23,7 @@ fn vs_main(
 {
     var result: VertexOutput;
     result.position = inUniform.transform_matrix * position;
-    result.normal   = normal;
+    result.normal   = (inUniform.rotation_matrix * vec4<f32>(normal, 1.0)).xyz;
     return result;
 }
 

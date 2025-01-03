@@ -1,6 +1,5 @@
 use crate::engine;
 use crate::rendering;
-use image::GenericImageView;
 
 // Utility
 
@@ -69,9 +68,14 @@ async fn extract_texture_data(file_name: &String) -> (Vec<u8>, [u32; 2]) {
     let mut out_size: [u32; 2] = [1, 1];
 
     // assume .png or .bmp only
-    let png_path: &String = file_name;
-    let rgba_path: String = png_path.replace(".png", ".rgba");
-    //let bmp_path: String = png_path.replace(".png", ".bmp");
+    let mut rgba_path: String = file_name.clone();
+    if rgba_path.contains(".png") {
+        rgba_path = rgba_path.replace(".png", ".rgba");
+    } else if rgba_path.contains("jpg") {
+        rgba_path = rgba_path.replace(".jpg", ".rgba");
+    } else if rgba_path.contains("jpeg") {
+        rgba_path = rgba_path.replace(".jpeg", ".rgba");
+    }
 
     // this check is slow, so assume .rgba is exist
     /*
@@ -94,42 +98,8 @@ async fn extract_texture_data(file_name: &String) -> (Vec<u8>, [u32; 2]) {
         out_data = texture_data[8..texture_data.len()].to_vec();
         out_size = [data_width, data_height];
     }
-    // Load .bmp
-    /*
-    else if is_exist_rgba{
-        let texture_data = load_binary(&bmp_path.as_str())
-            .await
-            .expect("Failed to load texture");
-
-        let info_header_ofset: usize = 14;
-        let data_width: u32 =
-            load_4byte_to_u32(&texture_data[(info_header_ofset + 4)..(info_header_ofset + 8)]);
-        let data_height: u32 =
-            load_4byte_to_u32(&texture_data[(info_header_ofset + 8)..(info_header_ofset + 12)]);
-
-        let data_offset: usize = load_4byte_to_u32(&texture_data[10..14]) as usize;
-        let data_len = (data_width * data_height * 4) as usize;
-
-        out_data = texture_data[data_offset..(data_offset + data_len)].to_vec();
-        out_size = [data_width, data_height];
-
-        log::debug!("{}", out_data.len());
-
-        /* too slow
-        let texture_image =
-        image::load_from_memory_with_format(&texture_data, image::ImageFormat::Bmp);
-        if texture_image.is_ok() {
-            log::debug!("loaded");
-            let texture_image_unwrap = texture_image.unwrap();
-            out_data = texture_image_unwrap.to_rgba8().to_vec();
-            out_size = [
-                texture_image_unwrap.dimensions().0,
-                texture_image_unwrap.dimensions().1,
-            ];
-        }
-        */
-    }*/
     // Load .png slower
+    /*
     else {
         let texture_data = load_binary(&png_path.as_str())
             .await
@@ -145,7 +115,7 @@ async fn extract_texture_data(file_name: &String) -> (Vec<u8>, [u32; 2]) {
                 texture_image_unwrap.dimensions().1,
             ];
         }
-    }
+    }*/
 
     return (out_data, out_size);
 }
@@ -290,37 +260,72 @@ pub async fn load_gltf_scene(
     // Load materials
     for material in gltf.materials() {
         let pbr = material.pbr_metallic_roughness();
+
+        // base color
         let mut base_color_texture_data: Vec<u8> = Vec::new();
         let mut base_color_texture_size: [u32; 2] = [1, 1];
+        {
+            if pbr.base_color_texture().is_some() {
+                let base_color_texture_source = &pbr
+                    .base_color_texture()
+                    .map(|tex| tex.texture().source().source())
+                    .expect("texture");
 
-        if pbr.base_color_texture().is_some() {
-            let texture_source = &pbr
-                .base_color_texture()
-                .map(|tex| tex.texture().source().source())
-                .expect("texture");
-
-            match texture_source {
-                gltf::image::Source::View { view, mime_type: _ } => {
-                    // embedded data is yet
-                    base_color_texture_data = buffer_data[view.buffer().index()].clone();
-                }
-                gltf::image::Source::Uri { uri, mime_type: _ } => {
-                    // from url
-                    let texture_path = folder_path.to_string() + uri;
-                    (base_color_texture_data, base_color_texture_size) =
-                        extract_texture_data(&texture_path).await;
-                }
-            };
+                match base_color_texture_source {
+                    gltf::image::Source::View { view, mime_type: _ } => {
+                        // embedded data is yet
+                        base_color_texture_data = buffer_data[view.buffer().index()].clone();
+                    }
+                    gltf::image::Source::Uri { uri, mime_type: _ } => {
+                        // from url
+                        let texture_path = folder_path.to_string() + uri;
+                        (base_color_texture_data, base_color_texture_size) =
+                            extract_texture_data(&texture_path).await;
+                    }
+                };
+            }
+            if base_color_texture_data.is_empty() {
+                base_color_texture_data = [255, 0, 255, 255].to_vec();
+            }
         }
 
-        if base_color_texture_data.is_empty() {
-            base_color_texture_data = [255, 0, 255, 255].to_vec();
+        // normal map
+        let mut normal_texture_data: Vec<u8> = Vec::new();
+        let mut normal_texture_size: [u32; 2] = [1, 1];
+        {
+            if material.normal_texture().is_some() {
+                let normal_source = &material
+                    .normal_texture()
+                    .expect("Should have normal texture")
+                    .texture()
+                    .source()
+                    .source();
+                match normal_source {
+                    gltf::image::Source::View { view, mime_type: _ } => {
+                        // embedded data is yet
+                        normal_texture_data = buffer_data[view.buffer().index()].clone();
+                    }
+                    gltf::image::Source::Uri { uri, mime_type: _ } => {
+                        // from url
+                        let texture_path = folder_path.to_string() + uri;
+                        (normal_texture_data, normal_texture_size) =
+                            extract_texture_data(&texture_path).await;
+                    }
+                }
+            }
+
+            if normal_texture_data.is_empty() {
+                normal_texture_data = [0, 0, 255, 255].to_vec();
+            }
         }
 
         let scene_material = engine::scene::SceneMaterial {
             _name: Some(material.name().unwrap().to_string()),
-            base_color_texture_dat: base_color_texture_data,
+            base_color_texture: base_color_texture_data,
             base_color_texture_size: base_color_texture_size,
+            normal_texture: normal_texture_data,
+            normal_texture_size: normal_texture_size,
+            ..Default::default()
         };
 
         out_materials.push(scene_material);

@@ -57,8 +57,10 @@ pub struct SceneObject {
 #[derive(Clone, Default)]
 pub struct SceneMaterial {
     pub _name: Option<std::string::String>,
-    pub base_color_texture_dat: Vec<u8>,
+    pub base_color_texture: Vec<u8>,
     pub base_color_texture_size: [u32; 2],
+    pub normal_texture: Vec<u8>,
+    pub normal_texture_size: [u32; 2],
 }
 
 #[derive(Clone, Copy, Default)]
