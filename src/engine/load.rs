@@ -363,6 +363,7 @@ fn get_gltf_mesh_from_node(
         let mut normals: Vec<[f32; 3]> = Vec::<[f32; 3]>::new();
         let mut colors: Vec<[f32; 3]> = Vec::<[f32; 3]>::new();
         let mut uvs: Vec<(usize, [f32; 2])> = Vec::new();
+        let mut tangents: Vec<[f32; 4]> = Vec::<[f32; 4]>::new();
 
         if reader.read_positions().is_some() {
             positions = {
@@ -388,27 +389,38 @@ fn get_gltf_mesh_from_node(
                 iter.enumerate().collect::<Vec<_>>()
             };
         }
+        if reader.read_tangents().is_some() {
+            tangents = {
+                let iter = reader.read_tangents().unwrap();
+                iter.collect::<Vec<_>>()
+            }
+        }
 
         let mut vertices: Vec<rendering::common::Vertex> = Vec::new();
         for i in 0..positions.len() {
-            vertices.push(rendering::common::Vertex::new(
-                if positions.len() > 0 {
-                    positions[i]
+            vertices.push(rendering::common::Vertex {
+                pos: if positions.len() > 0 {
+                    [positions[i][0], positions[i][1], positions[i][2], 1.0]
                 } else {
-                    [0.0, 0.0, 0.0]
+                    [0.0, 0.0, 0.0, 1.0]
                 },
-                if colors.len() > 0 {
+                color: if colors.len() > 0 {
                     colors[i]
                 } else {
                     [0.0, 0.0, 0.0]
                 },
-                if uvs.len() > 0 { uvs[i].1 } else { [0.0, 0.0] },
-                if normals.len() > 0 {
+                uv: if uvs.len() > 0 { uvs[i].1 } else { [0.0, 0.0] },
+                normal: if normals.len() > 0 {
                     normals[i]
                 } else {
                     [0.0, 0.0, 1.0]
                 },
-            ));
+                tangent: if tangents.len() > 0 {
+                    [tangents[i][0], tangents[i][1], tangents[i][2]]
+                } else {
+                    [0.0, 1.0, 0.0]
+                },
+            });
         }
 
         let mut indices = {
@@ -438,91 +450,4 @@ fn get_gltf_mesh_from_node(
         indices: mesh_indices,
         material: mesh_material,
     }
-}
-
-// Load .obj
-
-#[allow(dead_code)]
-pub async fn load_obj_single(file_name: &str) -> rendering::common::Mesh {
-    let obj_text = load_string(file_name)
-        .await
-        .expect("Failed to parse object name string");
-    let obj_cursor: std::io::Cursor<String> = std::io::Cursor::new(obj_text);
-    let mut obj_reader: std::io::BufReader<_> = std::io::BufReader::new(obj_cursor);
-
-    let load_options = tobj::LoadOptions {
-        triangulate: true,
-        single_index: true,
-        ..Default::default()
-    };
-
-    let loaded_obj = tobj::load_obj_buf_async(&mut obj_reader, &load_options, |p| async move {
-        let mat_text = load_string(&p).await.unwrap();
-        tobj::load_mtl_buf(&mut std::io::BufReader::new(std::io::Cursor::new(mat_text)))
-    })
-    .await
-    .expect("Failed to load obj");
-
-    let model: &tobj::Model = loaded_obj.0.first().expect("Failed to get first model");
-
-    log::debug!(
-        "loaded {} : vertices {}, indices {}",
-        file_name,
-        model.mesh.positions.len() / 3,
-        model.mesh.indices.len()
-    );
-
-    rendering::common::Mesh {
-        _name: model.name.clone(),
-        vertices: rendering::common::create_vertices_from_obj(&model, true),
-        indices: rendering::common::create_indices_from_obj(&model, true),
-        material: None,
-    }
-}
-
-#[allow(dead_code)]
-pub async fn load_obj(file_name: &str) -> Vec<rendering::common::Mesh> {
-    let obj_text = load_string(file_name)
-        .await
-        .expect("Failed to parse object name string");
-    let obj_cursor: std::io::Cursor<String> = std::io::Cursor::new(obj_text);
-    let mut obj_reader: std::io::BufReader<_> = std::io::BufReader::new(obj_cursor);
-
-    let load_options = tobj::LoadOptions {
-        triangulate: true,
-        single_index: true,
-        ..Default::default()
-    };
-
-    let loaded_obj = tobj::load_obj_buf_async(&mut obj_reader, &load_options, |p| async move {
-        let mat_text = load_string(&p).await.unwrap();
-        tobj::load_mtl_buf(&mut std::io::BufReader::new(std::io::Cursor::new(mat_text)))
-    })
-    .await
-    .expect("Failed to load obj");
-
-    let models: Vec<tobj::Model> = loaded_obj.0;
-    let mut out: Vec<rendering::common::Mesh> = Vec::new();
-
-    for model in models.iter() {
-        log::debug!(
-            "loaded {} : vertices {}, indices {}",
-            file_name,
-            model.mesh.positions.len() / 3,
-            model.mesh.indices.len()
-        );
-
-        if model.mesh.positions.len() == 0 {
-            continue;
-        }
-
-        out.push(rendering::common::Mesh {
-            _name: model.name.clone(),
-            vertices: rendering::common::create_vertices_from_obj(&model, true),
-            indices: rendering::common::create_indices_from_obj(&model, true),
-            material: None,
-        });
-    }
-
-    return out;
 }

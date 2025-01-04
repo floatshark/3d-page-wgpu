@@ -29,10 +29,11 @@ fn vs_main(
     @location(0) position : vec4<f32>,
     @location(1) normal   : vec3<f32>,
     @location(2) uv       : vec2<f32>,
+    @location(3) tangent  : vec3<f32>,
 ) -> VertexOutput 
 {
     let normal_world   = normalize(inUniform.rotation_matrix * vec4<f32>(normal, 1.0)).xyz;
-	let tangent_world  = normalize(inUniform.rotation_matrix * vec4<f32>(0.0, 1.0, 0.0, 1.0)).xyz;
+	let tangent_world  = normalize(inUniform.rotation_matrix * vec4<f32>(tangent, 1.0)).xyz;
 
     var output : VertexOutput;
 
@@ -49,11 +50,13 @@ fn fs_main(vertex: VertexOutput) -> FragmentOutput
 {
 	let binormal_world = normalize(cross(vertex.normal, vertex.tangent));
 	let tbn_matrix     = mat3x3<f32>(vertex.tangent, binormal_world, vertex.normal);
+    let encoded_normal = textureSample(normal_texture, normal_sampler, vertex.uv).rgb;
+    let surface_normal = normalize(encoded_normal - 0.5);
 
 	var output : FragmentOutput;
 
     output.position = vertex.position;
-    output.normal   = vec4<f32>(tbn_matrix * textureSample(normal_texture, normal_sampler, vertex.uv).xyz, 1.0);
+    output.normal   = vec4<f32>(normalize(tbn_matrix * surface_normal), 1.0);
     output.albedo   = textureSample(base_color_texture, base_color_sampler, vertex.uv);
 
     return output;

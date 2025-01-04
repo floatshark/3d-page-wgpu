@@ -827,6 +827,7 @@ fn init_phong_shading(interface: &WebGPUInterface, mesh: &common::Mesh) -> WebGP
         directional_light: [f32; 4],
         ambient_light: [f32; 4],
         inverse_matrix: [f32; 16],
+        buffer_type: [f32; 4],
     }
 
     let shader: wgpu::ShaderModule =
@@ -1024,6 +1025,7 @@ fn update_phong_shading(
     uniform_total.extend_from_slice(&[0.0]); // Padding!
     uniform_total.extend_from_slice(&ambient);
     uniform_total.extend_from_slice(&inverse_projection.to_cols_array().to_vec());
+    uniform_total.extend_from_slice(&[scene_value.differed_debug_type as f32, 0.0, 0.0, 0.0]);
 
     let uniform_ref: &[f32] = uniform_total.as_ref();
     interface.queue.write_buffer(
@@ -1151,7 +1153,7 @@ fn init_differed_gbuffers_shading(
         .unwrap()
         .normal_texture_size;
     let normal_texture: wgpu::Texture = interface.device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("base color texture"),
+        label: Some("normal texture"),
         size: wgpu::Extent3d {
             width: normal_texture_size[0],
             height: normal_texture_size[1],
@@ -1331,6 +1333,11 @@ fn init_differed_gbuffers_shading(
                 format: wgpu::VertexFormat::Float32x3,
                 offset: std::mem::size_of::<[f32; 7]>() as u64,
                 shader_location: 2,
+            },
+            wgpu::VertexAttribute {
+                format: wgpu::VertexFormat::Float32x3,
+                offset: std::mem::size_of::<[f32; 12]>() as u64,
+                shader_location: 3,
             },
         ],
     }];

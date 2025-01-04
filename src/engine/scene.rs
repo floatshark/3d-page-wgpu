@@ -30,7 +30,7 @@ impl Scene {
         };
         self.eye_direction = -glam::Vec3::X;
         self.directional_light_angle = [0.0, 0.0, -1.0];
-        self.ambient_light_color = [0.2, 0.2, 0.2, 1.0];
+        self.ambient_light_color = [0.0, 0.0, 0.0, 1.0];
         self.background_color = [0.7, 0.7, 0.7, 1.0];
         self.scene_shading_type = ShadingType::Differed;
         self.differed_debug_type = 0;
@@ -105,6 +105,9 @@ pub fn batch_objects(scene: &std::rc::Rc<std::cell::RefCell<Scene>>) {
                     );
                     let transed_norm = rotation_matrix.mul_vec4(norm);
                     source_vertices[i].normal = [transed_norm.x, transed_norm.y, transed_norm.z];
+                    let tangent = glam::Vec4::new(source_vertices[i].tangent[0], source_vertices[i].tangent[1], source_vertices[i].tangent[2], 1.0);
+                    let transed_tangent = rotation_matrix.mul_vec4(tangent);
+                    source_vertices[i].tangent = [transed_tangent.x, transed_tangent.y, transed_tangent.z];
                 }
                 batched_mesh.vertices.append(&mut source_vertices);
 
