@@ -9,6 +9,7 @@ struct FragmentOutput {
     @location(0) position : vec4<f32>,
     @location(1) normal   : vec4<f32>,
     @location(2) albedo   : vec4<f32>,
+    @location(3) metallic : vec4<f32>,
 }
 
 struct Uniform {
@@ -23,6 +24,8 @@ struct Uniform {
 @group(1) @binding(1) var base_color_sampler : sampler;
 @group(1) @binding(2) var normal_texture     : texture_2d<f32>;
 @group(1) @binding(3) var normal_sampler     : sampler;
+@group(1) @binding(4) var metallic_roughness_texture     : texture_2d<f32>;
+@group(1) @binding(5) var metallic_roughness_sampler     : sampler;
 
 @vertex
 fn vs_main(
@@ -58,6 +61,7 @@ fn fs_main(vertex: VertexOutput) -> FragmentOutput
     output.position = vertex.position;
     output.normal   = vec4<f32>(normalize(tbn_matrix * surface_normal), 1.0);
     output.albedo   = textureSample(base_color_texture, base_color_sampler, vertex.uv);
+    output.metallic = textureSample(metallic_roughness_texture, metallic_roughness_sampler, vertex.uv);
 
     return output;
 }

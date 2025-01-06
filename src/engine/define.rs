@@ -9,8 +9,6 @@ pub const FS_ENTRY_POINT: &str = "fs_main";
 #[allow(dead_code)]
 pub const GLTF_LOGO_PATH: &str = "resource/gltf_logo/scene.gltf";
 #[allow(dead_code)]
-pub const GLTF_BATHROOM_PATH: &str = "resource/the_bathroom/scene.gltf";
-
-// .obj from McGuire Computer Graphics Archive
+pub const GLTF_THE_BATHROOM_PATH: &str = "resource/the_bathroom/scene.gltf";
 #[allow(dead_code)]
-pub const OBJ_BUNNY_PATH: &str = "resource/bunny/bunny.obj";
+pub const GLTF_BATHROOM_INTERIOR_PATH: &str = "resource/bathroom_interior/scene.gltf";

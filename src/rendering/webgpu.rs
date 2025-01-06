@@ -34,6 +34,7 @@ pub struct WebGPUDifferedResource {
     gbuffer_position_texture: wgpu::Texture,
     gbuffer_normal_texture: wgpu::Texture,
     gbuffer_albedo_texture: wgpu::Texture,
+    gbuffer_metallic_roughness_texture: wgpu::Texture,
     pub bind_groups: Vec<wgpu::BindGroup>,
     pub uniform_buf: wgpu::Buffer,
     pub render_pipeline: wgpu::RenderPipeline,
@@ -425,6 +426,21 @@ pub fn render_differed_shading_main(
                     Some(wgpu::RenderPassColorAttachment {
                         view: &differed_resource
                             .gbuffer_albedo_texture
+                            .create_view(&TextureViewDescriptor::default()),
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color {
+                                r: 0.0,
+                                g: 0.0,
+                                b: 0.0,
+                                a: 1.0,
+                            }),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    }),
+                    Some(wgpu::RenderPassColorAttachment {
+                        view: &differed_resource
+                            .gbuffer_metallic_roughness_texture
                             .create_view(&TextureViewDescriptor::default()),
                         resolve_target: None,
                         ops: wgpu::Operations {
@@ -1200,6 +1216,62 @@ fn init_differed_gbuffers_shading(
             ..Default::default()
         });
 
+    let metallic_texture_raw = &materials
+    .get(mesh.material.unwrap() as usize)
+    .unwrap()
+    .metallic_roughness_texture;
+    let metallic_texture_size = &materials
+        .get(mesh.material.unwrap() as usize)
+        .unwrap()
+        .metallic_roughness_texture_size;
+    let metallic_texture: wgpu::Texture = interface.device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("metallic roughness texture"),
+        size: wgpu::Extent3d {
+            width: metallic_texture_size[0],
+            height: metallic_texture_size[1],
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+
+    interface.queue.write_texture(
+        wgpu::ImageCopyTexture {
+            aspect: wgpu::TextureAspect::All,
+            texture: &metallic_texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+        },
+        &metallic_texture_raw,
+        wgpu::ImageDataLayout {
+            offset: 0,
+            bytes_per_row: Some(4 * metallic_texture_size[0]),
+            rows_per_image: Some(metallic_texture_size[1]),
+        },
+        wgpu::Extent3d {
+            width: metallic_texture_size[0],
+            height: metallic_texture_size[1],
+            depth_or_array_layers: 1,
+        },
+    );
+
+    let metallic_texture_view: wgpu::TextureView =
+        metallic_texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let metallic_texture_sampler: wgpu::Sampler =
+        interface.device.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+
     // bindings
 
     let uniform_size: u64 = std::mem::size_of::<WriteGBuffersUniform>() as u64;
@@ -1275,6 +1347,22 @@ fn init_differed_gbuffers_shading(
                         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                         count: None,
                     },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 4,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 5,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
                 ],
                 label: Some("texture_bind_group_layout"),
             });
@@ -1299,6 +1387,14 @@ fn init_differed_gbuffers_shading(
                 wgpu::BindGroupEntry {
                     binding: 3,
                     resource: wgpu::BindingResource::Sampler(&normal_texture_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::TextureView(&metallic_texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: wgpu::BindingResource::Sampler(&metallic_texture_sampler),
                 },
             ],
             label: Some("texture_bind_group"),
@@ -1359,6 +1455,11 @@ fn init_differed_gbuffers_shading(
                     entry_point: Some(define::FS_ENTRY_POINT),
                     compilation_options: Default::default(),
                     targets: &[
+                        Some(wgpu::ColorTargetState {
+                            format: wgpu::TextureFormat::Rgba16Float,
+                            blend: None,
+                            write_mask: wgpu::ColorWrites::all(),
+                        }),
                         Some(wgpu::ColorTargetState {
                             format: wgpu::TextureFormat::Rgba16Float,
                             blend: None,
@@ -1543,6 +1644,22 @@ pub fn init_differed_pipeline(interface: &WebGPUInterface) -> WebGPUDifferedReso
             view_formats: &[],
         });
 
+    let gbuffer_metallic_roughness_texture: wgpu::Texture =
+    interface.device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("metallic roughness texture"),
+        size: wgpu::Extent3d {
+            width: width,
+            height: height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba16Float,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+        view_formats: &[],
+    });
+
     // bindings
 
     let gbuffer_bind_group_layout: wgpu::BindGroupLayout = interface
@@ -1590,6 +1707,16 @@ pub fn init_differed_pipeline(interface: &WebGPUInterface) -> WebGPUDifferedReso
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -1625,6 +1752,13 @@ pub fn init_differed_pipeline(interface: &WebGPUInterface) -> WebGPUDifferedReso
                         binding: 3,
                         resource: wgpu::BindingResource::TextureView(
                             &gbuffer_albedo_texture
+                                .create_view(&wgpu::TextureViewDescriptor::default()),
+                        ),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: wgpu::BindingResource::TextureView(
+                            &gbuffer_metallic_roughness_texture
                                 .create_view(&wgpu::TextureViewDescriptor::default()),
                         ),
                     },
@@ -1746,6 +1880,7 @@ pub fn init_differed_pipeline(interface: &WebGPUInterface) -> WebGPUDifferedReso
         gbuffer_position_texture,
         gbuffer_normal_texture,
         gbuffer_albedo_texture,
+        gbuffer_metallic_roughness_texture,
         bind_groups,
         uniform_buf,
         render_pipeline,

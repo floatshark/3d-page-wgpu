@@ -777,6 +777,9 @@ fn create_view_dialog(scene: &std::rc::Rc<std::cell::RefCell<engine::scene::Scen
             let buffer_type_option_albedo =
                 gloo::utils::document().create_element("option").unwrap();
             buffer_type_option_albedo.set_text_content(Some("albedo"));
+            let buffer_type_option_metallic =
+            gloo::utils::document().create_element("option").unwrap();
+            buffer_type_option_metallic.set_text_content(Some("metallic"));
 
             {
                 let scene_clone: std::rc::Rc<std::cell::RefCell<engine::scene::Scene>> =
@@ -798,6 +801,7 @@ fn create_view_dialog(scene: &std::rc::Rc<std::cell::RefCell<engine::scene::Scen
                                 "normal" => scene_value.differed_debug_type = 1,
                                 "depth" => scene_value.differed_debug_type = 2,
                                 "albedo" => scene_value.differed_debug_type = 3,
+                                "metallic" => scene_value.differed_debug_type = 4,
                                 _ => scene_value.differed_debug_type = 0,
                             }
                         },
@@ -824,6 +828,9 @@ fn create_view_dialog(scene: &std::rc::Rc<std::cell::RefCell<engine::scene::Scen
                 .unwrap();
             buffer_type_select_element
                 .append_child(&buffer_type_option_albedo)
+                .unwrap();
+            buffer_type_select_element
+                .append_child(&buffer_type_option_metallic)
                 .unwrap();
 
             buffer_type_element

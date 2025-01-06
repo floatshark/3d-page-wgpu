@@ -21,6 +21,7 @@ struct Uniform
 @group(0) @binding(1) var gbuffer_normal   : texture_2d<f32>;
 @group(0) @binding(2) var gbuffer_depth    : texture_depth_2d;
 @group(0) @binding(3) var gbuffer_albedo   : texture_2d<f32>;
+@group(0) @binding(4) var gbuffer_metallic : texture_2d<f32>;
 @group(1) @binding(0) var<uniform> inUniform: Uniform;
 
 @fragment
@@ -48,7 +49,7 @@ fn fs_main( @builtin(position) coord : vec4f ) -> @location(0) vec4f
     let surface_color  : vec4<f32> = albedo;
     let specular_color : vec4<f32> = vec4(1.0, 1.0, 1.0, 1.0);
 
-    var frag_color = diffuse * surface_color + specular * surface_color + ambient_light;
+    var frag_color = diffuse * surface_color + specular * specular_color + ambient_light;
     return frag_color;
 }
 
@@ -59,6 +60,7 @@ fn fs_debug_main( @builtin(position) coord : vec4f ) -> @location(0) vec4f
     var normal   : vec3<f32> = textureLoad( gbuffer_normal, vec2i(floor(coord.xy)), 0 ).xyz;
     var depth    : f32       = textureLoad( gbuffer_depth, vec2i(floor(coord.xy)), 0 );
     let albedo   : vec4<f32> = textureLoad( gbuffer_albedo, vec2i(floor(coord.xy)), 0 );
+    let metallic : vec4<f32> = textureLoad( gbuffer_metallic, vec2i(floor(coord.xy)), 0 );
 
     normal.x = (normal.x + 1.0) * 0.5;
     normal.y = (normal.y + 1.0) * 0.5;
@@ -78,6 +80,10 @@ fn fs_debug_main( @builtin(position) coord : vec4f ) -> @location(0) vec4f
     else if(inUniform.buffer_type == 3.0)
     {
       return albedo;
+    }
+    else if(inUniform.buffer_type == 4.0)
+    {
+      return metallic;
     }
 
     return vec4(depth, 0.0, 0.0, 1.0);

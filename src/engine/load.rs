@@ -259,75 +259,7 @@ pub async fn load_gltf_scene(
 
     // Load materials
     for material in gltf.materials() {
-        let pbr = material.pbr_metallic_roughness();
-
-        // base color
-        let mut base_color_texture_data: Vec<u8> = Vec::new();
-        let mut base_color_texture_size: [u32; 2] = [1, 1];
-        {
-            if pbr.base_color_texture().is_some() {
-                let base_color_texture_source = &pbr
-                    .base_color_texture()
-                    .map(|tex| tex.texture().source().source())
-                    .expect("texture");
-
-                match base_color_texture_source {
-                    gltf::image::Source::View { view, mime_type: _ } => {
-                        // embedded data is yet
-                        base_color_texture_data = buffer_data[view.buffer().index()].clone();
-                    }
-                    gltf::image::Source::Uri { uri, mime_type: _ } => {
-                        // from url
-                        let texture_path = folder_path.to_string() + uri;
-                        (base_color_texture_data, base_color_texture_size) =
-                            extract_texture_data(&texture_path).await;
-                    }
-                };
-            }
-            if base_color_texture_data.is_empty() {
-                base_color_texture_data = [255, 0, 255, 255].to_vec();
-            }
-        }
-
-        // normal map
-        let mut normal_texture_data: Vec<u8> = Vec::new();
-        let mut normal_texture_size: [u32; 2] = [1, 1];
-        {
-            if material.normal_texture().is_some() {
-                let normal_source = &material
-                    .normal_texture()
-                    .expect("Should have normal texture")
-                    .texture()
-                    .source()
-                    .source();
-                match normal_source {
-                    gltf::image::Source::View { view, mime_type: _ } => {
-                        // embedded data is yet
-                        normal_texture_data = buffer_data[view.buffer().index()].clone();
-                    }
-                    gltf::image::Source::Uri { uri, mime_type: _ } => {
-                        // from url
-                        let texture_path = folder_path.to_string() + uri;
-                        (normal_texture_data, normal_texture_size) =
-                            extract_texture_data(&texture_path).await;
-                    }
-                }
-            }
-
-            if normal_texture_data.is_empty() {
-                normal_texture_data = [0, 0, 255, 255].to_vec();
-            }
-        }
-
-        let scene_material = engine::scene::SceneMaterial {
-            _name: Some(material.name().unwrap().to_string()),
-            base_color_texture: base_color_texture_data,
-            base_color_texture_size: base_color_texture_size,
-            normal_texture: normal_texture_data,
-            normal_texture_size: normal_texture_size,
-            ..Default::default()
-        };
-
+        let scene_material = get_gltf_material(&material, &buffer_data, &folder_path).await;
         out_materials.push(scene_material);
     }
 
@@ -449,5 +381,141 @@ fn get_gltf_mesh_from_node(
         vertices: mesh_vertices,
         indices: mesh_indices,
         material: mesh_material,
+    }
+}
+
+async fn get_gltf_material<'a>(
+    material: &gltf::Material<'a>,
+    buffer_data: &Vec<Vec<u8>>,
+    gltf_folder_path: &str
+) -> engine::scene::SceneMaterial{
+
+    let pbr = material.pbr_metallic_roughness();
+
+    // base color
+    let mut base_color_texture_data: Vec<u8> = Vec::new();
+    let mut base_color_texture_size: [u32; 2] = [1, 1];
+    {
+        if pbr.base_color_texture().is_some() {
+            let base_color_texture_source = &pbr
+                .base_color_texture()
+                .map(|tex| tex.texture().source().source())
+                .expect("texture");
+
+            match base_color_texture_source {
+                gltf::image::Source::View { view, mime_type: _ } => {
+                    // embedded data is yet
+                    base_color_texture_data = buffer_data[view.buffer().index()].clone();
+                }
+                gltf::image::Source::Uri { uri, mime_type: _ } => {
+                    // from url
+                    let texture_path = gltf_folder_path.to_string() + uri;
+                    (base_color_texture_data, base_color_texture_size) =
+                        extract_texture_data(&texture_path).await;
+                }
+            };
+        }
+    }
+
+    // normal map
+    let mut normal_texture_data: Vec<u8> = Vec::new();
+    let mut normal_texture_size: [u32; 2] = [1, 1];
+    {
+        if material.normal_texture().is_some() {
+            let normal_source = &material
+                .normal_texture()
+                .expect("Should have normal texture")
+                .texture()
+                .source()
+                .source();
+            match normal_source {
+                gltf::image::Source::View { view, mime_type: _ } => {
+                    // embedded data is yet
+                    normal_texture_data = buffer_data[view.buffer().index()].clone();
+                }
+                gltf::image::Source::Uri { uri, mime_type: _ } => {
+                    // from url
+                    let texture_path = gltf_folder_path.to_string() + uri;
+                    (normal_texture_data, normal_texture_size) =
+                        extract_texture_data(&texture_path).await;
+                }
+            }
+        }
+    }
+
+    // metalic roughness texture
+    let mut metal_texture_data: Vec<u8> = Vec::new();
+    let mut metal_texture_size: [u32; 2] = [1, 1];
+    {
+        if pbr.metallic_roughness_texture().is_some() {
+            let metal_texture_source = &pbr
+                .metallic_roughness_texture()
+                .map(|tex| tex.texture().source().source())
+                .expect("texture");
+
+            match metal_texture_source {
+                gltf::image::Source::View { view, mime_type: _ } => {
+                    // embedded data is yet
+                    metal_texture_data = buffer_data[view.buffer().index()].clone();
+                }
+                gltf::image::Source::Uri { uri, mime_type: _ } => {
+                    // from url
+                    let texture_path = gltf_folder_path.to_string() + uri;
+                    (metal_texture_data, metal_texture_size) =
+                        extract_texture_data(&texture_path).await;
+                }
+            };
+        }
+    }
+
+    // KHR_materials_pbrSpecularGlossiness
+    let pbr_specular_glossiness = material.pbr_specular_glossiness();
+    if pbr_specular_glossiness.is_some() {
+        let pbr_specular_glossiness =
+            pbr_specular_glossiness.expect("Should have specular glossiness");
+        // diffuse texture
+        {
+            if pbr_specular_glossiness.diffuse_texture().is_some() {
+                let diffuse_texture_source = &pbr_specular_glossiness
+                    .diffuse_texture()
+                    .map(|tex| tex.texture().source().source())
+                    .expect("Should have diffuse texture");
+
+                match diffuse_texture_source {
+                    gltf::image::Source::View { view, mime_type: _ } => {
+                        // embedded data is yet
+                        base_color_texture_data = buffer_data[view.buffer().index()].clone();
+                    }
+                    gltf::image::Source::Uri { uri, mime_type: _ } => {
+                        // from url
+                        let texture_path = gltf_folder_path.to_string() + uri;
+                        (base_color_texture_data, base_color_texture_size) =
+                            extract_texture_data(&texture_path).await;
+                    }
+                };
+            }
+        }
+    }
+
+    // empty texture
+    if base_color_texture_data.is_empty() {
+        base_color_texture_data = [255, 0, 255, 255].to_vec();
+    }
+    if normal_texture_data.is_empty() {
+        normal_texture_data = [128, 128, 255, 255].to_vec();
+    }
+    if metal_texture_data.is_empty(){
+        metal_texture_data = [0, 0, 0, 255].to_vec();
+    }
+
+    engine::scene::SceneMaterial {
+        _name: Some(material.name().unwrap().to_string()),
+        base_color_texture: base_color_texture_data,
+        base_color_texture_size: base_color_texture_size,
+        normal_texture: normal_texture_data,
+        normal_texture_size: normal_texture_size,
+        metallic_roughness_texture: metal_texture_data,
+        metallic_roughness_texture_size: metal_texture_size,
+        ..Default::default()
     }
 }

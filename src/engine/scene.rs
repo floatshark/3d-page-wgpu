@@ -61,6 +61,8 @@ pub struct SceneMaterial {
     pub base_color_texture_size: [u32; 2],
     pub normal_texture: Vec<u8>,
     pub normal_texture_size: [u32; 2],
+    pub metallic_roughness_texture: Vec<u8>,
+    pub metallic_roughness_texture_size: [u32; 2],
 }
 
 #[derive(Clone, Copy, Default)]
@@ -105,9 +107,15 @@ pub fn batch_objects(scene: &std::rc::Rc<std::cell::RefCell<Scene>>) {
                     );
                     let transed_norm = rotation_matrix.mul_vec4(norm);
                     source_vertices[i].normal = [transed_norm.x, transed_norm.y, transed_norm.z];
-                    let tangent = glam::Vec4::new(source_vertices[i].tangent[0], source_vertices[i].tangent[1], source_vertices[i].tangent[2], 1.0);
+                    let tangent = glam::Vec4::new(
+                        source_vertices[i].tangent[0],
+                        source_vertices[i].tangent[1],
+                        source_vertices[i].tangent[2],
+                        1.0,
+                    );
                     let transed_tangent = rotation_matrix.mul_vec4(tangent);
-                    source_vertices[i].tangent = [transed_tangent.x, transed_tangent.y, transed_tangent.z];
+                    source_vertices[i].tangent =
+                        [transed_tangent.x, transed_tangent.y, transed_tangent.z];
                 }
                 batched_mesh.vertices.append(&mut source_vertices);
 
